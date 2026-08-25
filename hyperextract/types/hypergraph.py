@@ -432,6 +432,24 @@ class AutoHypergraph(
 
     # ==================== Extraction Pipeline ====================
 
+    def _one_stage_payload(self, chunk: str) -> dict[str, Any]:
+        """Build the one-stage extractor payload for a single chunk."""
+        return {"source_text": chunk}
+
+    def _edge_payload(self, chunk: str, known_nodes: str) -> dict[str, Any]:
+        """Build the two-stage hyperedge extractor payload for a single chunk."""
+        return {"source_text": chunk, "known_nodes": known_nodes}
+
+    def _empty_known_nodes_placeholder(self) -> str:
+        """Placeholder text when a chunk produced no nodes for hyperedge extraction."""
+        return "No entities identified in this chunk."
+
+    def _format_known_nodes(self, nodes: list[NodeSchema]) -> str:
+        """Format extracted node keys for the two-stage hyperedge prompt."""
+        if not nodes:
+            return self._empty_known_nodes_placeholder()
+        return "\n- ".join(self.node_key_extractor(n) for n in nodes)
+
     def _extract_data(self, text: str) -> AutoHypergraphSchema:
         """Main extraction logic dispatcher."""
         if self.extraction_mode == "two_stage":
@@ -453,22 +471,28 @@ class AutoHypergraph(
         Returns:
             Raw extracted hypergraph data.
         """
-        # Extract from single chunk or multiple chunks
         if len(text) <= self.chunk_size:
-            graph = self.data_extractor.invoke({"source_text": text})
+            graph = self._invoke_isolated(
+                self.data_extractor,
+                self._one_stage_payload(text),
+                chunk_index=0,
+                stage="one_stage_extract",
+            )
             graph_list = [graph]
         else:
             chunks = self.text_splitter.split_text(text)
-            inputs = [{"source_text": chunk} for chunk in chunks]
-            graph_list = self.data_extractor.batch(
-                inputs, config={"max_concurrency": self.max_workers}
-            )
-            graph_list = self._filter_none_results(
-                graph_list,
-                default_factory=lambda: self.graph_schema(nodes=[], edges=[]),
+            inputs = [self._one_stage_payload(chunk) for chunk in chunks]
+            graph_list = self._batch_isolated(
+                self.data_extractor,
+                inputs,
+                stage="one_stage_extract",
             )
 
-        # Merge multiple hypergraphs
+        graph_list = self._filter_none_results(
+            graph_list,
+            default_factory=lambda: self.graph_schema(nodes=[], edges=[]),
+        )
+
         return self.merge_batch_data(graph_list)
 
     def _extract_data_by_two_stage(self, text: str) -> AutoHypergraphSchema:
@@ -479,6 +503,9 @@ class AutoHypergraph(
         2. Batch extract nodes for all chunks.
         3. Batch extract hyperedges for all chunks (using chunk-specific nodes as context).
         4. Merge all partial results into one global hypergraph.
+
+        A chunk whose node extraction failed is skipped for hyperedge extraction
+        rather than prompting the LLM with an empty node list.
         """
         # 1. Prepare chunks
         if len(text) <= self.chunk_size:
@@ -497,8 +524,8 @@ class AutoHypergraph(
 
         # 4. Construct Partial Graphs (Tuple format for merge optimization)
         partial_hypergraphs = (
-            [node_list.items for node_list in chunk_node_lists],
-            [edge_list.items for edge_list in chunk_edge_lists],
+            [nl.items if nl is not None else [] for nl in chunk_node_lists],
+            [el.items if el is not None else [] for el in chunk_edge_lists],
         )
 
         # 5. Global Merge
@@ -506,39 +533,60 @@ class AutoHypergraph(
 
     def _extract_nodes_batch(
         self, chunks: list[str]
-    ) -> list[NodeListSchema[NodeSchema]]:
-        """Batch extract nodes from multiple text chunks."""
+    ) -> list[NodeListSchema[NodeSchema] | None]:
+        """Batch extract nodes from multiple text chunks.
+
+        Failed chunks are left as ``None`` so hyperedge extraction can skip them
+        instead of treating a provider failure as an empty node list.
+        """
         inputs = [{"source_text": chunk} for chunk in chunks]
-        results = self.node_extractor.batch(
-            inputs, config={"max_concurrency": self.max_workers}
-        )
-        return self._filter_none_results(
-            results,
-            default_factory=lambda: self.node_list_schema(items=[]),
+        return self._batch_isolated(
+            self.node_extractor,
+            inputs,
+            stage="two_stage_node",
         )
 
     def _extract_edges_batch(
-        self, chunks: list[str], node_lists: list[NodeListSchema[NodeSchema]]
+        self,
+        chunks: list[str],
+        node_lists: list[NodeListSchema[NodeSchema] | None],
     ) -> list[EdgeListSchema[EdgeSchema]]:
-        """Batch extract hyperedges using corresponding node lists as context."""
-        inputs = []
-        for chunk, node_list in zip(chunks, node_lists):
+        """Batch extract hyperedges using corresponding node lists as context.
+
+        Chunks whose node extraction failed (``None``) are skipped rather than
+        being sent to the LLM with an empty known-node list.
+        """
+        aligned: list[EdgeListSchema[EdgeSchema]] = [
+            self.edge_list_schema(items=[]) for _ in chunks
+        ]
+        inputs: list[dict[str, Any]] = []
+        indices: list[int] = []
+
+        for i, (chunk, node_list) in enumerate(zip(chunks, node_lists)):
+            if node_list is None:
+                logger.warning(
+                    f"stage=two_stage_edge_skipped chunk_index={i} "
+                    "reason=node_extract_failed"
+                )
+                continue
             nodes = node_list.items if node_list else []
-            if not nodes:
-                known_nodes = "No entities identified in this chunk."
-            else:
-                node_keys = [self.node_key_extractor(n) for n in nodes]
-                known_nodes = "\n- ".join(node_keys)
+            inputs.append(self._edge_payload(chunk, self._format_known_nodes(nodes)))
+            indices.append(i)
 
-            inputs.append({"source_text": chunk, "known_nodes": known_nodes})
+        if not inputs:
+            return aligned
 
-        results = self.edge_extractor.batch(
-            inputs, config={"max_concurrency": self.max_workers}
+        extracted = self._batch_isolated(
+            self.edge_extractor,
+            inputs,
+            stage="two_stage_edge",
+            chunk_indices=indices,
         )
-        return self._filter_none_results(
-            results,
-            default_factory=lambda: self.edge_list_schema(items=[]),
-        )
+        for idx, result in zip(indices, extracted):
+            aligned[idx] = (
+                result if result is not None else self.edge_list_schema(items=[])
+            )
+        return aligned
 
     def _prune_dangling_edges(
         self, graph: AutoHypergraphSchema

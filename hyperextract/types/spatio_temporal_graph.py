@@ -10,9 +10,7 @@ from ontomem.merger import BaseMerger, MergeStrategy
 
 from .graph import (
     AutoGraph,
-    EdgeListSchema,
     EdgeSchema,
-    NodeListSchema,
     NodeSchema,
 )
 
@@ -263,69 +261,28 @@ class AutoSpatioTemporalGraph(AutoGraph[NodeSchema, EdgeSchema]):
         )
 
     # ==============================================================================
-    # Override Extraction Methods to Dynamically Inject Context
+    # Override Extraction Payloads to Dynamically Inject Context
     # ==============================================================================
 
-    def _extract_edges_batch(
-        self, chunks: list[str], node_lists: list[NodeListSchema[NodeSchema]]
-    ) -> list[EdgeListSchema[EdgeSchema]]:
-        """Inject observation_time and observation_location into edge extraction."""
-        inputs = []
-        for chunk, node_list in zip(chunks, node_lists):
-            nodes = node_list.items if node_list else []
-            known_nodes = (
-                "\n- ".join([self.node_key_extractor(n) for n in nodes])
-                if nodes
-                else "No specific entities identified."
-            )
+    def _empty_known_nodes_placeholder(self) -> str:
+        return "No specific entities identified."
 
-            inputs.append(
-                {
-                    "source_text": chunk,
-                    "known_nodes": known_nodes,
-                    "observation_time": self.observation_time,
-                    "observation_location": self.observation_location,
-                }
-            )
-
-        results = self.edge_extractor.batch(
-            inputs, config={"max_concurrency": self.max_workers}
-        )
-        return self._filter_none_results(
-            results,
-            default_factory=lambda: self.edge_list_schema(items=[]),
-        )
-
-    def _extract_data_by_one_stage(self, text: str) -> Any:
+    def _one_stage_payload(self, chunk: str) -> dict[str, Any]:
         """Inject observation_time and observation_location into one-stage extraction."""
+        return {
+            "source_text": chunk,
+            "observation_time": self.observation_time,
+            "observation_location": self.observation_location,
+        }
 
-        if len(text) <= self.chunk_size:
-            inp = {
-                "source_text": text,
-                "observation_time": self.observation_time,
-                "observation_location": self.observation_location,
-            }
-            graph = self.data_extractor.invoke(inp)
-            graph_list = [graph]
-        else:
-            chunks = self.text_splitter.split_text(text)
-            inputs = [
-                {
-                    "source_text": chunk,
-                    "observation_time": self.observation_time,
-                    "observation_location": self.observation_location,
-                }
-                for chunk in chunks
-            ]
-            graph_list = self.data_extractor.batch(
-                inputs, config={"max_concurrency": self.max_workers}
-            )
-            graph_list = self._filter_none_results(
-                graph_list,
-                default_factory=lambda: self.graph_schema(nodes=[], edges=[]),
-            )
-
-        return self.merge_batch_data(graph_list)
+    def _edge_payload(self, chunk: str, known_nodes: str) -> dict[str, Any]:
+        """Inject observation_time and observation_location into two-stage edge extraction."""
+        return {
+            "source_text": chunk,
+            "known_nodes": known_nodes,
+            "observation_time": self.observation_time,
+            "observation_location": self.observation_location,
+        }
 
     def _create_empty_instance(
         self,

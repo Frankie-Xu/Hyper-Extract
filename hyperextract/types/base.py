@@ -241,6 +241,103 @@ class BaseAutoType(ABC, Generic[T]):
 
     # ==================== Extraction & Merge ====================
 
+    @staticmethod
+    def _payload_source_chars(payload: Any) -> int:
+        """Return source_text length from an extractor payload without exposing content."""
+        if isinstance(payload, dict):
+            text = payload.get("source_text", "")
+            if isinstance(text, str):
+                return len(text)
+        return 0
+
+    def _log_extractor_failure(
+        self,
+        *,
+        stage: str,
+        chunk_index: int,
+        error: BaseException,
+        payload: Any,
+    ) -> None:
+        """Log a per-chunk extractor failure without including source text."""
+        logger.warning(
+            f"stage={stage}_failed chunk_index={chunk_index} "
+            f"error_type={type(error).__name__} error={error} "
+            f"input_chars={self._payload_source_chars(payload)}"
+        )
+
+    def _invoke_isolated(
+        self,
+        extractor: Any,
+        payload: Any,
+        *,
+        chunk_index: int = 0,
+        stage: str = "extract",
+    ) -> Any:
+        """Invoke an extractor, turning a provider exception into None.
+
+        Logs ``chunk_index`` and the exception type. Does not log source text.
+        """
+        try:
+            return extractor.invoke(payload)
+        except Exception as e:
+            self._log_extractor_failure(
+                stage=stage,
+                chunk_index=chunk_index,
+                error=e,
+                payload=payload,
+            )
+            return None
+
+    def _batch_isolated(
+        self,
+        extractor: Any,
+        inputs: list,
+        *,
+        stage: str = "extract",
+        chunk_indices: list[int] | None = None,
+    ) -> list:
+        """Batch-invoke an extractor, turning per-item exceptions into None.
+
+        Prefers ``return_exceptions=True``. Falls back to per-item ``invoke()``
+        if the extractor does not accept that argument. Logs ``chunk_index``
+        and the exception type; does not log source text.
+        """
+        if not inputs:
+            return []
+
+        indices = (
+            chunk_indices if chunk_indices is not None else list(range(len(inputs)))
+        )
+        config = {"max_concurrency": self.max_workers}
+        try:
+            results = extractor.batch(
+                inputs,
+                config=config,
+                return_exceptions=True,
+            )
+        except TypeError:
+            results = []
+            for payload in inputs:
+                try:
+                    results.append(extractor.invoke(payload))
+                except Exception as exc:
+                    results.append(exc)
+
+        cleaned = []
+        for offset, result in enumerate(results):
+            if isinstance(result, Exception):
+                payload = inputs[offset] if offset < len(inputs) else None
+                chunk_index = indices[offset] if offset < len(indices) else offset
+                self._log_extractor_failure(
+                    stage=stage,
+                    chunk_index=chunk_index,
+                    error=result,
+                    payload=payload,
+                )
+                result = None
+            cleaned.append(result)
+        return cleaned
+
     def _extract_data(self, text: str) -> T:
         """Internal: Unified extraction logic (Chunking -> LLM -> Merge)."""
         logger.debug(
@@ -251,13 +348,12 @@ class BaseAutoType(ABC, Generic[T]):
 
         if len(text) <= self.chunk_size:
             logger.debug("stage=extract_single_chunk chunk_text_preview=%s", text[:200])
-            try:
-                extracted_data = self.data_extractor.invoke({"source_text": text})
-            except Exception as e:
-                # LLM returned unparseable output (e.g. prose instead of JSON).
-                # Log and treat as an empty result instead of crashing the run.
-                logger.warning("stage=extract_single_chunk_failed error=%s", e)
-                extracted_data = None
+            extracted_data = self._invoke_isolated(
+                self.data_extractor,
+                {"source_text": text},
+                chunk_index=0,
+                stage="extract_single_chunk",
+            )
             logger.debug(
                 "stage=extract_single_chunk_result chunk=0 result_summary=%s",
                 self._summarize_extracted(extracted_data),
@@ -279,22 +375,11 @@ class BaseAutoType(ABC, Generic[T]):
                 self.max_workers,
                 len(inputs),
             )
-            # return_exceptions keeps one bad chunk from aborting the whole batch;
-            # failures are logged and nulled (then filtered) below.
-            extracted_data_list = self.data_extractor.batch(
+            extracted_data_list = self._batch_isolated(
+                self.data_extractor,
                 inputs,
-                config={"max_concurrency": self.max_workers},
-                return_exceptions=True,
+                stage="chunk_extract",
             )
-            cleaned = []
-            for i, r in enumerate(extracted_data_list):
-                if isinstance(r, Exception):
-                    logger.warning(
-                        "stage=chunk_extract_failed chunk_index=%d error=%s", i, r
-                    )
-                    r = None
-                cleaned.append(r)
-            extracted_data_list = cleaned
             logger.debug(
                 "stage=llm_batch_complete results=%d", len(extracted_data_list)
             )
