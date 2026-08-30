@@ -21,6 +21,7 @@ from pydantic import BaseModel, Field, create_model
 
 from hyperextract.utils.logging import get_logger
 
+from ._faiss import _warn_untrusted_faiss_load
 from .base import BaseAutoType
 
 logger = get_logger(__name__)
@@ -320,6 +321,7 @@ class AutoList(BaseAutoType[AutoListSchema[ItemSchema]], Generic[ItemSchema]):
         folder = Path(folder_path)
         if not folder.is_dir():
             raise ValueError(f"Folder does not exist: {folder_path}")
+        _warn_untrusted_faiss_load(folder)
         self._index = FAISS.load_local(
             str(folder), self.embedder, allow_dangerous_deserialization=True
         )

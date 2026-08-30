@@ -116,6 +116,8 @@ he build-index ./ka/ -f
     └── docstore.json   # 文档存储映射
 ```
 
+请只加载自己生成或完全信任的知识库目录中的 `index/`。本地 FAISS 索引在加载时需要反序列化。
+
 ---
 
 ## 性能

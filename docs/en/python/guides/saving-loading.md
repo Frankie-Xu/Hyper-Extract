@@ -53,6 +53,9 @@ result.dump("./my_ka/")
 
 ## Loading Knowledge Abstracts
 
+!!! warning "Trusted directories only"
+    Local FAISS indexes under `index/` are deserialized when you load a Knowledge Abstract. Only call `load()` (or CLI/MCP commands that load a KA) on directories you generated yourself or fully trust.
+
 ### Basic Load
 
 ```python
