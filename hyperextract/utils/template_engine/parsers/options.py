@@ -1,7 +1,7 @@
 """Options models and parser."""
 
 from ontomem.merger import MergeStrategy
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError, model_validator
 
 from .schemas import (
     VALID_AUTOTYPES,
@@ -40,6 +40,34 @@ class Options(BaseModel):
 
     observation_time: str | None = None
     observation_location: str | None = None
+
+    @model_validator(mode="after")
+    def _validate_chunk_options(self) -> "Options":
+        """Reject YAML options that would make character chunking collapse."""
+        if self.chunk_size is not None and self.chunk_size < 1:
+            raise ValueError(
+                f"options.chunk_size must be >= 1 when set (got {self.chunk_size})"
+            )
+        if self.chunk_overlap is not None and self.chunk_overlap < 0:
+            raise ValueError(
+                "options.chunk_overlap must be >= 0 when set "
+                f"(got {self.chunk_overlap})"
+            )
+        if (
+            self.chunk_size is not None
+            and self.chunk_overlap is not None
+            and self.chunk_overlap >= self.chunk_size
+        ):
+            raise ValueError(
+                "options.chunk_overlap must be smaller than options.chunk_size "
+                f"(got chunk_overlap={self.chunk_overlap}, "
+                f"chunk_size={self.chunk_size})"
+            )
+        if self.max_workers is not None and self.max_workers < 1:
+            raise ValueError(
+                f"options.max_workers must be >= 1 when set (got {self.max_workers})"
+            )
+        return self
 
 
 COMMON_PARAMS = ("chunk_size", "chunk_overlap", "max_workers", "verbose")
@@ -89,7 +117,10 @@ def parse_option(
     }
     if override:
         options_dict.update(override)
-    options = Options(**options_dict)
+    try:
+        options = Options(**options_dict)
+    except ValidationError as exc:
+        raise ValueError(_author_options_error(exc)) from None
 
     if autotype in ("model",):
         return _build_kwargs(options, MODEL_PARAMS, COMMON_PARAMS)
@@ -119,6 +150,17 @@ def parse_option(
             ("observation_time", "observation_location") + GRAPH_PARAMS,
             COMMON_PARAMS,
         )
+
+
+def _author_options_error(exc: ValidationError) -> str:
+    """Flatten Pydantic errors into a template-author-facing sentence."""
+    messages: list[str] = []
+    for err in exc.errors():
+        msg = err.get("msg", "").removeprefix("Value error, ")
+        if msg:
+            messages.append(msg)
+    detail = "; ".join(messages) if messages else str(exc)
+    return f"Invalid template options: {detail}"
 
 
 def _build_kwargs(
