@@ -520,6 +520,20 @@ def _check_relation_members(
                 )
             )
             return diags
+        # The extractor (parsers/identifiers.py) reads members["source"] and
+        # members["target"] directly, so both roles are required — otherwise the
+        # template validates but raises KeyError at extraction time.
+        for required_role in ("source", "target"):
+            if required_role not in members:
+                diags.append(
+                    Diagnostic(
+                        HE_T003,
+                        "error",
+                        "identifiers.relation_members",
+                        f"Binary graph relation_members must define a "
+                        f"{required_role!r} role",
+                    )
+                )
         for role, field_name in members.items():
             if field_name not in relation_fields:
                 diags.append(

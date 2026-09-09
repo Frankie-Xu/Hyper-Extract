@@ -199,6 +199,20 @@ class TestIdentifierErrors:
         diags = _by_code(result, HE_T003)
         assert any(d.path == "identifiers.relation_members.source" for d in diags)
 
+    def test_relation_members_must_define_source_and_target_roles(self, tmp_path):
+        # Non-standard role keys ("from"/"to") whose VALUES are valid edge
+        # fields: the extractor reads members["source"]/["target"], so the
+        # validator must reject this instead of letting it KeyError at runtime.
+        yaml_text = VALID_GRAPH.replace(
+            "    source: source\n    target: target",
+            "    from: source\n    to: target",
+        )
+        result = validate_template(_write(tmp_path, yaml_text))
+        assert not result.ok
+        diags = _by_code(result, HE_T003)
+        assert any("source" in d.message for d in diags)
+        assert any("target" in d.message for d in diags)
+
     def test_graph_members_must_be_dict(self, tmp_path):
         yaml_text = VALID_GRAPH.replace(
             "  relation_members:\n    source: source\n    target: target",
