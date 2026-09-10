@@ -82,7 +82,7 @@ he parse document.md -o ./output/ -l zh
 
 ### 处理目录
 
-从目录中的所有 `.md` 和 `.txt` 文件提取：
+目录模式非递归：读取该目录下受支持的文件（`.txt`/`.md` 始终支持；安装 `hyperextract[ingest]` 后还包括 PDF/DOCX 等）；同层其它常规文件会 warning 并跳过：
 
 ```bash
 he parse ./documents/ -t general/concept_graph -o ./output/ -l zh

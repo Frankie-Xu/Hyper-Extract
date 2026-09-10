@@ -86,7 +86,7 @@ he parse document.md -o ./output/ -l en
 
 ### Process a Directory
 
-Extract from all `.md` and `.txt` files in a directory:
+Directory mode is non-recursive and reads supported files in that folder (`.txt`/`.md` always; PDF/DOCX/… when `hyperextract[ingest]` is installed); other regular files at the same level are skipped with a warning.
 
 ```bash
 he parse ./documents/ -t general/concept_graph -o ./output/ -l en
