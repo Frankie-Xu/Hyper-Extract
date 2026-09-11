@@ -125,9 +125,9 @@ Non-graph types (`AutoList`, `AutoSet`, `AutoModel`) are not supported; the comm
 
 ## he export graphml
 
-Export a pairwise knowledge graph to [GraphML](http://graphml.graphdrawing.org/) — an XML graph format that Gephi, yEd, and other desktop tools can open.
+Export a knowledge graph to [GraphML](http://graphml.graphdrawing.org/) — an XML graph format that Gephi, yEd, and other desktop tools can open.
 
-Hypergraphs have no single GraphML encoding for N-ary edges. `he export graphml` reports a clear error for hypergraph KAs and suggests [`he export csv`](#he-export-csv).
+Binary (2-endpoint) edges are written as ordinary `<edge source="…" target="…">` elements. Edges with **three or more** endpoints are written as GraphML 1.0 `<hyperedge>` elements with `<endpoint node="…"/>` children, in extractor order.
 
 ### Synopsis
 
@@ -149,11 +149,12 @@ he export graphml KA_PATH -o FILE.graphml
 
 ### Description
 
-- **Directed.** The document uses `graph edgedefault="directed"`. An edge `B → A` is written as `source="B"` `target="A"`; endpoints are never sorted.
+- **Directed pairwise edges.** The document uses `graph edgedefault="directed"`. An edge `B → A` is written as `source="B"` `target="A"`; endpoints are never sorted.
+- **N-ary hyperedges.** An edge with 3+ incident nodes becomes `<hyperedge>` plus `<endpoint node="…"/>` in the same order `incident_nodes_extractor` returns. Endpoints are never sorted.
 - **Attributes.** Scalar fields from each node's / edge's `model_dump()` (`str` / `int` / `float` / `bool`) become GraphML `<data>` keys. Nested values are stringified. XML special characters (`& < > " '`) are escaped.
-- **Dangling edges.** An edge whose source or target node is missing is skipped (with a warning), not treated as a crash.
+- **Dangling edges.** An edge whose source or target node is missing (or a hyperedge with any missing endpoint) is skipped (with a warning), not treated as a crash.
 
-Supported Auto-Types: `AutoGraph` and its temporal/spatial subclasses. `AutoHypergraph` is rejected. Non-graph types (`AutoList`, `AutoSet`, `AutoModel`) are not supported.
+Supported Auto-Types: `AutoGraph`, `AutoHypergraph`, and temporal/spatial subclasses. Non-graph types (`AutoList`, `AutoSet`, `AutoModel`) are not supported.
 
 ### Examples
 
