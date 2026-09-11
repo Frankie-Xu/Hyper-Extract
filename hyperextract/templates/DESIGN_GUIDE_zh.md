@@ -707,6 +707,7 @@ identifiers:
 需要单个对象 → model
 需要列表 → list
 需要去重 → set
+需要切分文档、不做 LLM 抽取 → document  # method/chunk_rag
 需要二元关系 → graph
 需要多方关系 → hypergraph
 需要时间 → temporal_graph
@@ -719,7 +720,8 @@ identifiers:
 ```
 templates/
 ├── presets/
-│   ├── general/        # 13 个模板（8 个基础 + 5 个领域专用）
+│   ├── general/        # 12 个模板
+│   ├── education/      # 2 个模板
 │   ├── finance/        # 5 个模板
 │   ├── medicine/       # 5 个模板
 │   ├── tcm/            # 5 个模板
@@ -730,6 +732,22 @@ templates/
 ├── README.md              # 模板目录
 └── README_ZH.md          # 中文目录
 ```
+
+### 校验码（HE-T001–009）
+
+运行 `he template validate`。实现：`hyperextract/utils/template_engine/validator.py`。
+
+| 代码 | 级别 | 检查 |
+|------|------|------|
+| HE-T001 | error | YAML 可解析 |
+| HE-T002 | error | 文档符合 `TemplateCfg` |
+| HE-T003 | error | 标识字段存在于对应输出 schema |
+| HE-T004 | error | `relation_members` 类型与 AutoType 匹配 |
+| HE-T005 | error | Display `{field}` 占位符存在于对应 schema |
+| HE-T006 | error | 时间类型定义 `time_field`；空间类型定义 `location_field` |
+| HE-T007 | warning | 声明的语言出现在双语 dict 字段上 |
+| HE-T008 | warning | 字段数超过第四部分上限 5（图实体/关系，或 `model`/`list`/`set` 的 `output.fields`） |
+| HE-T009 | warning | `domain/name` 与 Gallery 预设冲突 |
 
 ---
 
