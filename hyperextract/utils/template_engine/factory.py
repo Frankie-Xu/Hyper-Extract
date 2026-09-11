@@ -1,10 +1,12 @@
 """Template Factory - Dynamically creates template instances from configuration.
 
-Supports all 8 AutoType dynamic generation.
+`create()` currently wires: model, list, set, graph, hypergraph,
+temporal_graph, spatial_graph, spatio_temporal_graph.
+Unknown `type` values raise ValueError (document is not wired here).
 """
 
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, get_args
 
 from langchain_core.embeddings import Embeddings
 from langchain_core.language_models import BaseChatModel
@@ -18,6 +20,7 @@ from .parsers import (
     parse_option,
     parse_output,
 )
+from .parsers.schemas.base import VALID_AUTOTYPES
 
 if TYPE_CHECKING:
     from hyperextract.types import (
@@ -30,6 +33,11 @@ if TYPE_CHECKING:
         AutoSpatioTemporalGraph,
         AutoTemporalGraph,
     )
+
+
+def _unknown_autotype_error(type_name: str) -> ValueError:
+    allowed = ", ".join(get_args(VALID_AUTOTYPES))
+    return ValueError(f"Unknown template type {type_name!r}. Allowed types: {allowed}")
 
 
 class TemplateFactory:
@@ -462,6 +470,9 @@ class TemplateFactory:
         if template_cfg is None:
             raise ValueError(f"Template not found: {source}")
 
+        if template_cfg.type not in get_args(VALID_AUTOTYPES):
+            raise _unknown_autotype_error(template_cfg.type)
+
         template_cfg = localize_template(template_cfg, language)
 
         match template_cfg.type:
@@ -493,6 +504,8 @@ class TemplateFactory:
                 template = cls.create_spatio_temporal_graph(
                     template_cfg, llm_client, embedder, **kwargs
                 )
+            case _:
+                raise _unknown_autotype_error(template_cfg.type)
 
         if isinstance(source, str):
             template.metadata["template"] = (

@@ -1,6 +1,9 @@
 """Unit tests for TemplateFactory."""
 
+from pathlib import Path
+
 import pytest
+import yaml
 
 from hyperextract.utils.template_engine import Gallery, TemplateFactory
 
@@ -125,3 +128,35 @@ class TestTemplateFactoryCreateAllTypes:
 
         assert isinstance(result, AutoGraph)
         assert result.metadata.get("type") == "graph"
+
+
+class TestTemplateFactoryUnknownType:
+    """Unknown AutoType must fail closed with ValueError, not UnboundLocalError."""
+
+    def test_unknown_type_yaml_raises_valueerror(self, tmp_path, llm_client, embedder):
+        repo_root = Path(__file__).resolve().parents[2]
+        src = (repo_root / "hyperextract/templates/presets/general/base_model.yaml").read_text(
+            encoding="utf-8"
+        )
+        yaml_path = tmp_path / "not_a_type.yaml"
+        yaml_path.write_text(
+            src.replace("\ntype: model\n", "\ntype: not_a_type\n"),
+            encoding="utf-8",
+        )
+        raw_type = yaml.safe_load(yaml_path.read_text(encoding="utf-8"))["type"]
+        assert raw_type == "not_a_type"
+
+        # Parser Literal rejects unknown types at load; assignment reaches the
+        # factory match the same way an unbound type would after a looser schema.
+        cfg = Gallery.get("general/model").model_copy(deep=True)
+        cfg.type = raw_type
+
+        with pytest.raises(ValueError, match="not_a_type") as exc_info:
+            TemplateFactory.create(cfg, "en", llm_client, embedder)
+
+        assert not isinstance(exc_info.value, UnboundLocalError)
+        message = str(exc_info.value)
+        assert "Allowed types:" in message
+        assert "model" in message
+        assert "graph" in message
+        assert "hypergraph" in message
