@@ -3,6 +3,7 @@
 import json
 import logging
 import os
+import subprocess
 import tomllib
 from dataclasses import dataclass
 from pathlib import Path
@@ -76,16 +77,86 @@ def _env_api_key(provider: str) -> str:
 
 
 def _restrict_config_permissions(path: Path) -> None:
-    """Set *path* to owner read/write only (0600). Best-effort on Windows."""
+    """Set *path* to owner read/write only. POSIX 0600; Windows owner DACL."""
+    if os.name == "nt":
+        _restrict_windows_acl(path)
+        return
     try:
         os.chmod(path, _CONFIG_FILE_MODE)
     except OSError:
         pass
 
 
+def _icacls(*args: str) -> subprocess.CompletedProcess:
+    return subprocess.run(
+        ["icacls", *args],
+        capture_output=True,
+        check=False,
+    )
+
+
+def _icacls_text(result: subprocess.CompletedProcess) -> str:
+    """Decode icacls output; Windows uses the ANSI code page, not UTF-8."""
+
+    def _decode(data: bytes | None) -> str:
+        if not data:
+            return ""
+        if os.name == "nt":
+            return data.decode("mbcs", errors="replace")
+        return data.decode("utf-8", errors="replace")
+
+    return f"{_decode(result.stdout)}\n{_decode(result.stderr)}"
+
+
+def _windows_account() -> str:
+    user = os.environ.get("USERNAME", "").strip()
+    domain = os.environ.get("USERDOMAIN", "").strip()
+    if user and domain and domain.upper() != user.upper():
+        return f"{domain}\\{user}"
+    return user
+
+
+def _restrict_windows_acl(path: Path) -> None:
+    """Grant the current user FullControl; drop Everyone/Users inherited read."""
+    account = _windows_account()
+    if not account:
+        return
+    target = str(path)
+    # Grant first so stripping inheritance cannot lock the file out.
+    _icacls(target, "/grant:r", f"{account}:(F)")
+    _icacls(target, "/inheritance:r")
+    for principal in (
+        "Everyone",
+        "*S-1-1-0",
+        "Users",
+        "BUILTIN\\Users",
+        "Authenticated Users",
+    ):
+        _icacls(target, "/remove:g", principal)
+
+
+def _windows_acl_everyone_readable(path: Path) -> bool:
+    """True when icacls reports Everyone with a read-class right."""
+    text = _icacls_text(_icacls(str(path)))
+    for line in text.splitlines():
+        stripped = line.strip()
+        if "Everyone:" not in stripped and "S-1-1-0" not in stripped:
+            continue
+        if ":(" in stripped:
+            return True
+    return False
+
+
 def _warn_if_insecure_permissions(path: Path) -> None:
-    """Warn when group or others can read the config file. Unix-only."""
+    """Warn when group, others, or Everyone can read the config file."""
     if os.name == "nt":
+        if _windows_acl_everyone_readable(path):
+            logger.warning(
+                "Config file %s is readable by Everyone. "
+                "The next `he config` save will restrict the ACL to the "
+                "current user.",
+                path,
+            )
         return
     try:
         mode = path.stat().st_mode
