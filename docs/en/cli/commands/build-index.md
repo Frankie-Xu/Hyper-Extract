@@ -116,6 +116,8 @@ The index is stored in the knowledge abstract directory:
     └── docstore.json   # Document store mapping
 ```
 
+Load an existing `index/` only from Knowledge Abstract directories you created or fully trust. Local FAISS indexes require deserialization on load.
+
 ---
 
 ## Performance

@@ -16,6 +16,7 @@ from ontosight import view_nodes
 
 from hyperextract.utils.logging import get_logger
 
+from ._faiss import _warn_untrusted_faiss_load
 from .base import BaseAutoType, T
 
 logger = get_logger(__name__)
@@ -311,6 +312,7 @@ class AutoModel(BaseAutoType[T]):
         folder = Path(folder_path)
         if not folder.is_dir():
             raise ValueError(f"Folder does not exist: {folder_path}")
+        _warn_untrusted_faiss_load(folder)
         self._index = FAISS.load_local(
             str(folder), self.embedder, allow_dangerous_deserialization=True
         )
