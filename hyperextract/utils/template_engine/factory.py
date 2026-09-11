@@ -1,6 +1,7 @@
 """Template Factory - Dynamically creates template instances from configuration.
 
-Supports all 8 AutoType dynamic generation.
+Supports AutoType generation for model, list, set, document, graph,
+hypergraph, temporal_graph, spatial_graph, and spatio_temporal_graph.
 """
 
 from pathlib import Path
@@ -21,6 +22,7 @@ from .parsers import (
 
 if TYPE_CHECKING:
     from hyperextract.types import (
+        AutoDocument,
         AutoGraph,
         AutoHypergraph,
         AutoList,
@@ -376,6 +378,24 @@ class TemplateFactory:
         )
 
     @classmethod
+    def create_document(
+        cls,
+        config: TemplateCfg,
+        llm_client: BaseChatModel,
+        embedder: Embeddings,
+        **kwargs,
+    ) -> "AutoDocument":
+        """Create AutoDocument template (chunk corpus, no LLM extraction)."""
+        from hyperextract.types import AutoDocument
+
+        options = parse_option(config.options, config.type, override=kwargs)
+        return AutoDocument(
+            llm_client=llm_client,
+            embedder=embedder,
+            **options,
+        )
+
+    @classmethod
     def create(
         cls,
         source: str | TemplateCfg,
@@ -473,6 +493,10 @@ class TemplateFactory:
                 template = cls.create_list(template_cfg, llm_client, embedder, **kwargs)
             case "set":
                 template = cls.create_set(template_cfg, llm_client, embedder, **kwargs)
+            case "document":
+                template = cls.create_document(
+                    template_cfg, llm_client, embedder, **kwargs
+                )
             case "graph":
                 template = cls.create_graph(
                     template_cfg, llm_client, embedder, **kwargs

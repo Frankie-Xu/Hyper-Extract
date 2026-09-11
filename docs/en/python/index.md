@@ -68,7 +68,7 @@ ka = Template.create("method/light_rag")
 
 ### Auto-Types
 
-Eight data structure types for different extraction needs:
+Eight data structure types for different extraction needs, plus `AutoDocument` for chunk-only corpora (`type: document` in YAML; no LLM extraction).
 
 | Class | Use Case |
 |-------|----------|

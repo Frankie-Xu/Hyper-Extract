@@ -125,3 +125,50 @@ class TestTemplateFactoryCreateAllTypes:
 
         assert isinstance(result, AutoGraph)
         assert result.metadata.get("type") == "graph"
+
+
+_DOCUMENT_YAML = """
+language: en
+name: document_fixture
+type: document
+tags: [test]
+description: Minimal AutoDocument fixture (chunk corpus, no LLM extraction).
+output:
+  description: Unused; AutoDocument stores raw chunks.
+  fields:
+  - name: content
+    type: str
+    description: Placeholder required by TemplateCfg.
+guideline:
+  target: Unused; AutoDocument does not extract.
+  rules:
+  - Chunk text only; do not invent graph schema.
+display:
+  label: '{content}'
+"""
+
+
+class TestTemplateFactoryDocumentType:
+    def test_create_document_yaml_type(self, tmp_path, llm_client, embedder):
+        yaml_path = tmp_path / "document.yaml"
+        yaml_path.write_text(_DOCUMENT_YAML, encoding="utf-8")
+
+        from hyperextract.utils.template_engine import Template
+
+        result = Template.create(
+            str(yaml_path),
+            "en",
+            llm_client,
+            embedder,
+        )
+
+        from hyperextract import AutoDocument
+
+        assert isinstance(result, AutoDocument)
+        assert result.metadata["type"] == "document"
+
+    def test_public_import_autodocument(self):
+        from hyperextract import AutoDocument as Exported
+        from hyperextract.types import AutoDocument as Canonical
+
+        assert Exported is Canonical

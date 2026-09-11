@@ -25,6 +25,7 @@ Usage:
 from importlib.metadata import version
 
 from .types import (
+    AutoDocument,
     AutoGraph,
     AutoHypergraph,
     AutoList,
@@ -50,6 +51,8 @@ __author__ = "Yifan Feng"
 __email__ = "evanfeng97@gmail.com"
 
 __all__ = [
+    # Corpus type
+    "AutoDocument",
     # Graph types
     "AutoGraph",
     "AutoHypergraph",

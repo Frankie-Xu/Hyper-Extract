@@ -14,6 +14,7 @@ VALID_AUTOTYPES = Literal[
     "model",
     "list",
     "set",
+    "document",
     "graph",
     "hypergraph",
     "temporal_graph",
