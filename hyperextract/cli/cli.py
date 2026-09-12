@@ -145,7 +145,7 @@ def main(
                     ),
                     (
                         "he export graphml <ka_path> -o <file>",
-                        "pairwise <edge> + N-ary hyperedge",
+                        "pairwise <edge> + <hyperedge>",
                     ),
                     (
                         "he export csv <ka_path> -o <dir>",
