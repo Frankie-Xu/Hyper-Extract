@@ -153,6 +153,20 @@ def main(
                     ),
                 ],
             ),
+            make_section(
+                "🛠️ Manage Knowledge Abstract (KA)",
+                [
+                    (
+                        "he tag <ka_path> --source ...",
+                        "Tag a source document",
+                    ),
+                    (
+                        "he remove <ka_path> ...",
+                        "Delete nodes, edges, facts, or documents",
+                    ),
+                    ("he clean <ka_path>", "Remove index or the whole KA"),
+                ],
+            ),
         ]
 
         for section in sections:
