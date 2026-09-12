@@ -17,7 +17,6 @@ from typer.testing import CliRunner
 from hyperextract.cli.cli import app
 from hyperextract.utils.exporters import (
     HYPEREDGE_MEMBER_SEP,
-    GraphMLHypergraphError,
     export_to_csv,
     export_to_graphml,
 )
@@ -178,17 +177,33 @@ class TestGraphMLPairwise:
         ]
         assert node_ids == ["Apple"]
 
-    def test_nary_edge_raises(self, tmp_path):
+    def test_nary_edge_writes_hyperedge(self, tmp_path):
         nodes = [Entity(name="A"), Entity(name="B"), Entity(name="C")]
-        edges = [Event(label="meeting", participants=["A", "B", "C"])]
-        with pytest.raises(GraphMLHypergraphError, match="pairwise"):
-            export_to_graphml(
-                nodes,
-                edges,
-                node_id_extractor=lambda n: n.name,
-                incident_nodes_extractor=lambda e: tuple(e.participants),
-                file_path=tmp_path / "g.graphml",
+        edges = [Event(label="meeting", participants=["C", "A", "B"])]
+        path = export_to_graphml(
+            nodes,
+            edges,
+            node_id_extractor=lambda n: n.name,
+            incident_nodes_extractor=lambda e: tuple(e.participants),
+            file_path=tmp_path / "g.graphml",
+        )
+        xml = path.read_text(encoding="utf-8")
+        assert "hyperedge" in xml
+        assert f'xmlns="{GRAPHML_NS}"' in xml
+
+        root, graph, ns = _parse_graphml(path)
+        assert root.tag == f"{{{GRAPHML_NS}}}graphml" or root.get("xmlns") == GRAPHML_NS
+        hyperedges = graph.findall("g:hyperedge", ns) or graph.findall("hyperedge")
+        assert len(hyperedges) == 1
+        endpoints = [
+            ep.get("node")
+            for ep in (
+                hyperedges[0].findall("g:endpoint", ns)
+                or hyperedges[0].findall("endpoint")
             )
+        ]
+        assert endpoints == ["C", "A", "B"]
+        assert _edge_endpoints(graph, ns) == []
 
 
 # ---------------------------------------------------------------------------
@@ -353,7 +368,7 @@ class TestCLIExport:
         _root, graph, ns = _parse_graphml(out)
         assert _edge_endpoints(graph, ns) == [("B", "A")]
 
-    def test_graphml_rejects_hypergraph(self, tmp_path):
+    def test_graphml_exports_hypergraph(self, tmp_path):
         ka_dir = _ka_dir(tmp_path)
         fake = FakeGraphKA(
             [Entity(name="A"), Entity(name="B"), Entity(name="C")],
@@ -371,9 +386,10 @@ class TestCLIExport:
             result = runner.invoke(
                 app, ["export", "graphml", str(ka_dir), "-o", str(out)]
             )
-        assert result.exit_code == 1
-        assert "csv" in result.output.lower()
-        assert not out.exists()
+        assert result.exit_code == 0, result.output
+        xml = out.read_text(encoding="utf-8")
+        assert "hyperedge" in xml
+        assert f'xmlns="{GRAPHML_NS}"' in xml
 
     def test_csv_writes_tables(self, tmp_path):
         ka_dir = _ka_dir(tmp_path)

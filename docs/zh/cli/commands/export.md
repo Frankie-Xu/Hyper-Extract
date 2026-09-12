@@ -125,9 +125,9 @@ Serbian-American inventor and electrical engineer
 
 ## he export graphml
 
-将二元知识图谱导出为 [GraphML](http://graphml.graphdrawing.org/)——Gephi、yEd 等桌面工具可打开的 XML 图谱格式。
+将知识图谱导出为 [GraphML](http://graphml.graphdrawing.org/)——Gephi、yEd 等桌面工具可打开的 XML 图谱格式。
 
-超图的 N 元边没有单一的 GraphML 编码。对超图 KA 运行 `he export graphml` 会给出明确错误，并建议使用 [`he export csv`](#he-export-csv)。
+二元（2 端点）边写成普通的 `<edge source="…" target="…">`。**三个及以上**端点的边写成 GraphML 1.0 的 `<hyperedge>`，子元素为 `<endpoint node="…"/>`，顺序与抽取器返回顺序一致。
 
 ### 用法
 
@@ -149,11 +149,12 @@ he export graphml KA_PATH -o FILE.graphml
 
 ### 说明
 
-- **有向。** 文档使用 `graph edgedefault="directed"`。边 `B → A` 写作 `source="B"` `target="A"`；端点不会被排序。
+- **有向二元边。** 文档使用 `graph edgedefault="directed"`。边 `B → A` 写作 `source="B"` `target="A"`；端点不会被排序。
+- **N 元超边。** 3 个及以上端点的边写成 `<hyperedge>`，并按 `incident_nodes_extractor` 的返回顺序写出 `<endpoint node="…"/>`。端点不会被排序。
 - **属性。** 节点 / 边 `model_dump()` 中的标量字段（`str` / `int` / `float` / `bool`）成为 GraphML `<data>` 键。嵌套值转为字符串。XML 特殊字符（`& < > " '`）会被转义。
-- **悬空边。** 源或目标节点缺失的边会被跳过（并记录 warning），不会导致崩溃。
+- **悬空边。** 源或目标节点缺失的二元边（或任一端点缺失的超边）会被跳过（并记录 warning），不会导致崩溃。
 
-支持的 Auto-Type：`AutoGraph` 及其时空子类。`AutoHypergraph` 会被拒绝。非图谱类型（`AutoList`、`AutoSet`、`AutoModel`）不支持。
+支持的 Auto-Type：`AutoGraph`、`AutoHypergraph` 及其时空子类。非图谱类型（`AutoList`、`AutoSet`、`AutoModel`）不支持。
 
 ### 示例
 
