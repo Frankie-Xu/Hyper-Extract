@@ -2,10 +2,11 @@
 
 import logging
 import os
+import subprocess
 
 import pytest
 
-from hyperextract.cli.config import ConfigManager
+from hyperextract.cli.config import ConfigManager, _icacls, _icacls_text
 
 # Fixture-only dummy; never a real key from the environment.
 _FAKE_API_KEY = "sk-test"
@@ -13,6 +14,10 @@ _FAKE_API_KEY = "sk-test"
 _POSIX_ONLY = pytest.mark.skipif(
     os.name == "nt",
     reason="POSIX file modes are not enforced on Windows",
+)
+_WINDOWS_ONLY = pytest.mark.skipif(
+    os.name != "nt",
+    reason="Windows ACL checks use icacls",
 )
 
 
@@ -71,4 +76,64 @@ def test_load_warns_when_config_is_group_or_world_readable(tmp_path, caplog):
 
     assert caplog.records
     assert any("0600" in record.getMessage() for record in caplog.records)
+    assert _FAKE_API_KEY not in caplog.text
+
+
+def _acl_text(path) -> str:
+    return _icacls_text(_icacls(str(path)))
+
+
+@_WINDOWS_ONLY
+def test_save_sets_owner_only_acl(tmp_path):
+    cfg_path = tmp_path / "config.toml"
+    mgr = ConfigManager(cfg_path)
+    mgr.set_llm(provider="openai", model="gpt-4o-mini", api_key=_FAKE_API_KEY)
+
+    text = _acl_text(cfg_path)
+    assert "Everyone:(R)" not in text
+    assert "Everyone:" not in text
+
+
+@_WINDOWS_ONLY
+def test_save_removes_everyone_read(tmp_path):
+    cfg_path = tmp_path / "config.toml"
+    cfg_path.write_text(
+        '[llm]\nprovider = "openai"\nmodel = "gpt-4o-mini"\n'
+        f'api_key = "{_FAKE_API_KEY}"\nbase_url = ""\n',
+        encoding="utf-8",
+    )
+    subprocess.run(
+        ["icacls", str(cfg_path), "/grant", "Everyone:(R)"],
+        check=True,
+        capture_output=True,
+    )
+    assert "Everyone:" in _acl_text(cfg_path)
+
+    mgr = ConfigManager(cfg_path)
+    mgr.set_llm(provider="openai", api_key=_FAKE_API_KEY)
+
+    text = _acl_text(cfg_path)
+    assert "Everyone:(R)" not in text
+    assert "Everyone:" not in text
+
+
+@_WINDOWS_ONLY
+def test_load_warns_when_everyone_can_read(tmp_path, caplog):
+    cfg_path = tmp_path / "config.toml"
+    cfg_path.write_text(
+        '[llm]\nprovider = "openai"\nmodel = "gpt-4o-mini"\n'
+        f'api_key = "{_FAKE_API_KEY}"\nbase_url = ""\n',
+        encoding="utf-8",
+    )
+    subprocess.run(
+        ["icacls", str(cfg_path), "/grant", "Everyone:(R)"],
+        check=True,
+        capture_output=True,
+    )
+
+    with caplog.at_level(logging.WARNING, logger="hyperextract.cli.config"):
+        ConfigManager(cfg_path)
+
+    assert caplog.records
+    assert any("Everyone" in record.getMessage() for record in caplog.records)
     assert _FAKE_API_KEY not in caplog.text
