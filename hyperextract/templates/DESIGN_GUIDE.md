@@ -707,6 +707,7 @@ identifiers:
 Need single object → model
 Need list → list
 Need deduplication → set
+Need chunked documents without LLM extraction → document  # method/chunk_rag
 Need binary relations → graph
 Need multi-party relations → hypergraph
 Need time → temporal_graph
@@ -719,7 +720,8 @@ Need both → spatio_temporal_graph
 ```
 templates/
 ├── presets/
-│   ├── general/        # 13 templates (8 base + 5 domain-specific)
+│   ├── general/        # 12 templates
+│   ├── education/      # 2 templates
 │   ├── finance/        # 5 templates
 │   ├── medicine/       # 5 templates
 │   ├── tcm/           # 5 templates
@@ -730,6 +732,22 @@ templates/
 ├── README.md              # Template catalog
 └── README_ZH.md          # 中文目录
 ```
+
+### Validator codes (HE-T001–009)
+
+Run `he template validate`. Implementation: `hyperextract/utils/template_engine/validator.py`.
+
+| Code | Severity | Check |
+|------|----------|--------|
+| HE-T001 | error | YAML is parseable |
+| HE-T002 | error | Document matches `TemplateCfg` |
+| HE-T003 | error | Identifier fields exist on the relevant output schema |
+| HE-T004 | error | `relation_members` type matches AutoType |
+| HE-T005 | error | Display `{field}` placeholders exist on the corresponding schema |
+| HE-T006 | error | Temporal types define `time_field`; spatial types define `location_field` |
+| HE-T007 | warning | Declared languages are present on bilingual dict fields |
+| HE-T008 | warning | Field count exceeds the Part 4 limit of 5 (graph entity/relation, or `model`/`list`/`set` `output.fields`) |
+| HE-T009 | warning | `domain/name` collides with a Gallery preset |
 
 ---
 

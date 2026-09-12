@@ -317,6 +317,24 @@ class TestWarningsDoNotFail:
         assert diags[0].severity == "warning"
         assert diags[0].path == "output.entities.fields"
 
+    def test_model_field_count_over_limit_is_warning(self, tmp_path):
+        extra_fields = "\n".join(
+            f"    - name: extra_{i}\n      type: str\n      description: extra"
+            for i in range(5)
+        )
+        yaml_text = VALID_SET.replace("type: set", "type: model").replace(
+            "    - name: name\n      type: str\n      description: item name",
+            "    - name: name\n      type: str\n      description: item name\n"
+            + extra_fields,
+        )
+        result = validate_template(_write(tmp_path, yaml_text))
+        assert result.ok
+        diags = _by_code(result, HE_T008)
+        assert diags
+        assert diags[0].severity == "warning"
+        assert diags[0].path == "output.fields"
+        assert "model" in diags[0].message
+
     def test_gallery_name_collision_is_warning(self, tmp_path):
         path = _write(
             tmp_path / "general",
