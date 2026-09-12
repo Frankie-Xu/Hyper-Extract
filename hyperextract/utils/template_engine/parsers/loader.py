@@ -92,7 +92,7 @@ def _localize_output(
     autotype: VALID_AUTOTYPES,
 ) -> NaiveOutputSchema | GraphOutputSchema:
     """Localize output configuration."""
-    if autotype in ("model", "list", "set"):
+    if autotype in ("model", "list", "set", "document"):
         return _localize_naive_output(output, language)
     return GraphOutputSchema(
         description=_localize_data(output.description, language),
@@ -107,7 +107,7 @@ def _localize_guideline(
     autotype: VALID_AUTOTYPES,
 ) -> NaiveGuidelineSchema | GraphGuidelineSchema:
     """Localize guideline configuration."""
-    if autotype in ("model", "list", "set"):
+    if autotype in ("model", "list", "set", "document"):
         return NaiveGuidelineSchema(
             target=_localize_data(guideline.target, language),
             rules=_localize_data(guideline.rules, language),

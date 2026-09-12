@@ -131,6 +131,9 @@ def parse_option(
     if autotype in ("set",):
         return _build_kwargs(options, SET_PARAMS, COMMON_PARAMS)
 
+    if autotype in ("document",):
+        return _build_kwargs(options, (), COMMON_PARAMS)
+
     if autotype in ("graph", "hypergraph"):
         return _build_kwargs(options, GRAPH_PARAMS, COMMON_PARAMS)
 

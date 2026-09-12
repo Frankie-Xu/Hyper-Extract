@@ -68,7 +68,7 @@ ka = Template.create("method/light_rag")
 
 ### 自动类型
 
-8 种用于不同提取需求的数据结构类型：
+8 种用于不同提取需求的数据结构类型，另有 `AutoDocument` 用于只切块、不走 LLM 抽取的语料（YAML `type: document`）。
 
 | 类 | 用例 |
 |-------|----------|
