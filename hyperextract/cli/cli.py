@@ -153,6 +153,20 @@ def main(
                     ),
                 ],
             ),
+            make_section(
+                "🛠️ Manage Knowledge Abstract (KA)",
+                [
+                    (
+                        "he tag <ka_path> --source ...",
+                        "Tag a source document",
+                    ),
+                    (
+                        "he remove <ka_path> ...",
+                        "Delete nodes, edges, facts, or documents",
+                    ),
+                    ("he clean <ka_path>", "Remove index or the whole KA"),
+                ],
+            ),
         ]
 
         for section in sections:
@@ -581,23 +595,16 @@ def export_graphml_cmd(
     ka_path: str = typer.Argument(..., help="Knowledge Abstract directory"),
     output: str = typer.Option(..., "--output", "-o", help="Output GraphML file"),
 ):
-    """Export a pairwise graph Knowledge Abstract to GraphML.
+    """Export a knowledge graph to GraphML.
 
-    Hypergraphs are not encoded as GraphML (no single N-ary standard).
-    Use `he export csv` for hypergraphs.
+    Binary edges are written as `<edge source target>`. Edges with three
+    or more endpoints are written as GraphML 1.0 `<hyperedge>` elements.
     """
     from hyperextract.utils.exporters import GraphMLHypergraphError, export_to_graphml
 
     logger.info("command=export-graphml ka_path=%s output=%s", ka_path, output)
 
     ka, _path, template = _load_graph_ka_for_export(ka_path)
-
-    if _is_hypergraph_ka(ka):
-        console.print(
-            "[red]Error:[/red] GraphML export supports pairwise graphs only. "
-            "Use [bold]he export csv[/bold] for hypergraphs."
-        )
-        raise typer.Exit(1)
 
     output_path = Path(output)
     console.print(f"[blue]Knowledge Abstract:[/blue] {ka_path}")

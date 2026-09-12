@@ -11,6 +11,8 @@ from typing import Any
 
 import tomli_w
 
+from hyperextract.utils.client import PROVIDER_API_KEY_ENV, PROVIDER_PRESETS
+
 logger = logging.getLogger(__name__)
 
 # Owner read/write only. Group/other bits that make a file too open.
@@ -19,49 +21,6 @@ _GROUP_OTHER_BITS = 0o077
 
 DEFAULT_CONFIG_DIR = Path.home() / ".he"
 DEFAULT_CONFIG_FILE = DEFAULT_CONFIG_DIR / "config.toml"
-
-# Provider presets: base_url and default models for each provider
-PROVIDER_PRESETS: dict[str, dict[str, str | None]] = {
-    "openai": {
-        "base_url": "https://api.openai.com/v1",
-        "default_llm": "gpt-4o-mini",
-        "default_embedder": "text-embedding-3-small",
-    },
-    "bailian": {
-        "base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1",
-        "default_llm": "qwen3.6-plus",
-        "default_embedder": "text-embedding-v4",
-    },
-    "vllm": {
-        "base_url": None,
-        "default_llm": None,
-        "default_embedder": None,
-    },
-    # DeepSeek: OpenAI-compatible, no embeddings API.
-    "deepseek": {
-        "base_url": "https://api.deepseek.com",
-        "default_llm": "deepseek-v4-flash",
-        "default_embedder": None,
-    },
-    # Anthropic (Claude): native client, no base_url, no embeddings API.
-    "anthropic": {
-        "base_url": "",
-        "default_llm": "claude-opus-4-8",
-        "default_embedder": None,
-    },
-    "claude": {
-        "base_url": "",
-        "default_llm": "claude-opus-4-8",
-        "default_embedder": None,
-    },
-}
-
-# Environment variables checked (in order) for each provider's API key.
-PROVIDER_API_KEY_ENV: dict[str, tuple] = {
-    "anthropic": ("ANTHROPIC_API_KEY", "CLAUDE_API_KEY"),
-    "claude": ("ANTHROPIC_API_KEY", "CLAUDE_API_KEY"),
-    "deepseek": ("DEEPSEEK_API_KEY",),
-}
 
 
 def _env_api_key(provider: str) -> str:

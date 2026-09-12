@@ -789,38 +789,54 @@ def _check_bilingual(config: TemplateCfg) -> list[Diagnostic]:
 
 
 def _check_field_count(config: TemplateCfg) -> list[Diagnostic]:
-    """Warn when entity/relation field count exceeds the DESIGN_GUIDE limit (HE-T008).
+    """Warn when field count exceeds the DESIGN_GUIDE Part 4 limit (HE-T008).
+
+    Graph types check entity and relation schemas. Naive types
+    (``model`` / ``list`` / ``set``) check ``output.fields``. The cap is
+    ``FIELD_COUNT_LIMIT`` (Part 4: max 5 fields per component).
 
     See also:
         hyperextract-skills/yaml-validator/SKILL.md (Validation Levels)
         hyperextract/templates/DESIGN_GUIDE.md
             (Quick Reference Field Count Guidelines, Part 4 Field Count Optimization)
     """
-    if not isinstance(config.output, GraphOutputSchema):
-        return []
     diags: list[Diagnostic] = []
-    entity_count = len(config.output.entities.fields)
-    relation_count = len(config.output.relations.fields)
-    if entity_count > FIELD_COUNT_LIMIT:
-        diags.append(
-            Diagnostic(
-                HE_T008,
-                "warning",
-                "output.entities.fields",
-                f"Entity schema has {entity_count} fields "
-                f"(DESIGN_GUIDE limit is {FIELD_COUNT_LIMIT})",
+    if isinstance(config.output, GraphOutputSchema):
+        entity_count = len(config.output.entities.fields)
+        relation_count = len(config.output.relations.fields)
+        if entity_count > FIELD_COUNT_LIMIT:
+            diags.append(
+                Diagnostic(
+                    HE_T008,
+                    "warning",
+                    "output.entities.fields",
+                    f"Entity schema has {entity_count} fields "
+                    f"(DESIGN_GUIDE limit is {FIELD_COUNT_LIMIT})",
+                )
             )
-        )
-    if relation_count > FIELD_COUNT_LIMIT:
-        diags.append(
-            Diagnostic(
-                HE_T008,
-                "warning",
-                "output.relations.fields",
-                f"Relation schema has {relation_count} fields "
-                f"(DESIGN_GUIDE limit is {FIELD_COUNT_LIMIT})",
+        if relation_count > FIELD_COUNT_LIMIT:
+            diags.append(
+                Diagnostic(
+                    HE_T008,
+                    "warning",
+                    "output.relations.fields",
+                    f"Relation schema has {relation_count} fields "
+                    f"(DESIGN_GUIDE limit is {FIELD_COUNT_LIMIT})",
+                )
             )
-        )
+        return diags
+    if config.type in RECORD_TYPES and isinstance(config.output, NaiveOutputSchema):
+        count = len(config.output.fields)
+        if count > FIELD_COUNT_LIMIT:
+            diags.append(
+                Diagnostic(
+                    HE_T008,
+                    "warning",
+                    "output.fields",
+                    f"{config.type} schema has {count} fields "
+                    f"(DESIGN_GUIDE limit is {FIELD_COUNT_LIMIT})",
+                )
+            )
     return diags
 
 

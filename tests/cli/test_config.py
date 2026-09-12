@@ -137,3 +137,50 @@ def test_load_warns_when_everyone_can_read(tmp_path, caplog):
     assert caplog.records
     assert any("Everyone" in record.getMessage() for record in caplog.records)
     assert _FAKE_API_KEY not in caplog.text
+def test_cli_provider_tables_are_library_presets():
+    """CLI must not keep a drifting copy of library provider tables."""
+    from hyperextract.cli import config as cli_config
+    from hyperextract.utils.client import PROVIDER_API_KEY_ENV, PROVIDER_PRESETS
+
+    assert cli_config.PROVIDER_PRESETS is PROVIDER_PRESETS
+    assert cli_config.PROVIDER_API_KEY_ENV is PROVIDER_API_KEY_ENV
+    assert "orcarouter" in cli_config.PROVIDER_PRESETS
+    assert cli_config.PROVIDER_API_KEY_ENV["orcarouter"] == ("ORCAROUTER_API_KEY",)
+
+
+def test_get_llm_config_reads_orcarouter_env_key(tmp_path, monkeypatch):
+    """Empty toml api_key must resolve ORCAROUTER_API_KEY for orcarouter."""
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    monkeypatch.delenv("OPENAI_BASE_URL", raising=False)
+    monkeypatch.setenv("ORCAROUTER_API_KEY", "sk-orca-from-env")
+
+    cm = ConfigManager(tmp_path / "config.toml")
+    cm.set_llm(provider="orcarouter", model="orcarouter/auto", api_key="")
+    cfg = cm.get_llm_config()
+
+    assert cfg.api_key == "sk-orca-from-env"
+    assert cfg.base_url == "https://api.orcarouter.ai/v1"
+
+
+def test_get_llm_config_orcarouter_key_beats_openai_key(tmp_path, monkeypatch):
+    """ORCAROUTER_API_KEY must win over OPENAI_API_KEY for orcarouter."""
+    monkeypatch.delenv("OPENAI_BASE_URL", raising=False)
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-openai-must-not-win")
+    monkeypatch.setenv("ORCAROUTER_API_KEY", "sk-orca-preferred")
+
+    cm = ConfigManager(tmp_path / "config.toml")
+    cm.set_llm(provider="orcarouter", api_key="")
+    cfg = cm.get_llm_config()
+
+    assert cfg.api_key == "sk-orca-preferred"
+
+
+def test_interactive_init_lists_orcarouter_and_anthropic():
+    """he config init provider list must match library presets."""
+    import inspect
+
+    from hyperextract.cli.commands.config import init
+
+    source = inspect.getsource(init)
+    assert '"orcarouter"' in source
+    assert '"anthropic"' in source

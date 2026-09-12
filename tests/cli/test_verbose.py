@@ -119,6 +119,14 @@ class TestCLINoVerboseFlag:
         result = runner.invoke(app, ["config", "--help"])
         assert result.exit_code == 0
 
+    def test_bare_he_banner_lists_manage_commands(self):
+        """No-arg `he` banner includes tag, remove, and clean."""
+        result = runner.invoke(app, [])
+        assert result.exit_code == 0
+        assert "he tag" in result.output
+        assert "he remove" in result.output
+        assert "he clean" in result.output
+
     def test_info_missing_ka_exits_with_error(self):
         """he info <nonexistent> exits with error."""
         result = runner.invoke(app, ["info", "/nonexistent/path"])

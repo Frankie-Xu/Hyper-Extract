@@ -10,6 +10,8 @@ Tools:
     - search          : semantic retrieval over a KA (needs an index)
     - ask             : RAG question-answering over a KA (needs an index)
     - export_obsidian : export a KA to an Obsidian vault
+    - export_graphml  : export a KA to GraphML (same as `he export graphml`)
+    - export_csv      : export a KA to CSV tables (same as `he export csv`)
 
 Run it (stdio transport):
 
@@ -219,6 +221,88 @@ def export_obsidian(
     return f"Exported {count} notes to {vault}"
 
 
+def _is_hypergraph_ka(ka) -> bool:
+    """True for AutoHypergraph; temporal/spatial graphs are pairwise."""
+    if type(ka).__name__ == "AutoHypergraph":
+        return True
+    meta = getattr(ka, "metadata", None)
+    return isinstance(meta, dict) and meta.get("type") == "hypergraph"
+
+
+def _require_graph_ka(ka) -> str | None:
+    if hasattr(ka, "export_obsidian"):
+        return None
+    return (
+        "GraphML/CSV export is only supported for graph-type knowledge abstracts "
+        "(graph, hypergraph, temporal/spatial graphs)."
+    )
+
+
+def export_graphml(ka_path: str, output: str) -> str:
+    """Export a knowledge abstract to GraphML.
+
+    Args:
+        ka_path: Path to the knowledge abstract directory.
+        output: Destination ``.graphml`` file.
+
+    Uses the same ``export_to_graphml`` implementation as ``he export graphml``.
+    Does not create, mutate, or delete the KA.
+    """
+    from hyperextract.utils.exporters import GraphMLHypergraphError, export_to_graphml
+
+    ka = _load_ka(ka_path)
+    err = _require_graph_ka(ka)
+    if err:
+        return err
+    try:
+        dest = export_to_graphml(
+            ka.nodes,
+            ka.edges,
+            node_id_extractor=ka.node_key_extractor,
+            incident_nodes_extractor=ka.nodes_in_edge_extractor,
+            file_path=output,
+            edge_id_extractor=getattr(ka, "edge_key_extractor", None),
+        )
+    except GraphMLHypergraphError as e:
+        return str(e)
+    return f"Wrote GraphML to {dest}"
+
+
+def export_csv(ka_path: str, output: str, overwrite: bool = False) -> str:
+    """Export a knowledge abstract to CSV tables.
+
+    Args:
+        ka_path: Path to the knowledge abstract directory.
+        output: Destination directory.
+        overwrite: Allow writing into an existing, non-empty directory.
+
+    Uses the same ``export_to_csv`` implementation as ``he export csv``.
+    Does not create, mutate, or delete the KA.
+    """
+    from hyperextract.utils.exporters import export_to_csv
+
+    ka = _load_ka(ka_path)
+    err = _require_graph_ka(ka)
+    if err:
+        return err
+    hypergraph = _is_hypergraph_ka(ka)
+    try:
+        dest = export_to_csv(
+            ka.nodes,
+            ka.edges,
+            node_id_extractor=ka.node_key_extractor,
+            incident_nodes_extractor=ka.nodes_in_edge_extractor,
+            folder_path=output,
+            edge_id_extractor=getattr(ka, "edge_key_extractor", None),
+            hypergraph=hypergraph,
+            overwrite=overwrite,
+        )
+    except FileExistsError as e:
+        return f"{e} Pass overwrite=true to write into it."
+    written = "nodes.csv + hyperedges.csv" if hypergraph else "nodes.csv + edges.csv"
+    return f"Wrote {written} to {dest}"
+
+
 def _model_to_dict(item: Any) -> Any:
     if hasattr(item, "model_dump"):
         return item.model_dump()
@@ -240,7 +324,15 @@ def build_server():
         from mcp.server.mcpserver import MCPServer
 
         server = MCPServer(SERVER_NAME)
-    for fn in (list_templates, info, search, ask, export_obsidian):
+    for fn in (
+        list_templates,
+        info,
+        search,
+        ask,
+        export_obsidian,
+        export_graphml,
+        export_csv,
+    ):
         server.tool()(fn)
     return server
 

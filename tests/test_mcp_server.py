@@ -145,6 +145,27 @@ def test_export_obsidian(monkeypatch, tmp_path):
     assert (vault / "Note.md").exists()
 
 
+def test_export_graphml(monkeypatch, tmp_path):
+    g = _graph_with_index()
+    monkeypatch.setattr(mcp_server, "_load_ka", lambda p: g)
+    dest = tmp_path / "out.graphml"
+    out = mcp_server.export_graphml("x", str(dest))
+    assert dest.exists()
+    xml = dest.read_text(encoding="utf-8")
+    assert "<edge" in xml
+    assert str(dest) in out
+
+
+def test_export_csv(monkeypatch, tmp_path):
+    g = _graph_with_index()
+    monkeypatch.setattr(mcp_server, "_load_ka", lambda p: g)
+    dest = tmp_path / "csv_out"
+    out = mcp_server.export_csv("x", str(dest))
+    assert (dest / "nodes.csv").exists()
+    assert (dest / "edges.csv").exists()
+    assert "nodes.csv + edges.csv" in out
+
+
 # ---------------------------------------------------------------------------
 # FastMCP wiring (needs the optional `mcp` package)
 # ---------------------------------------------------------------------------
