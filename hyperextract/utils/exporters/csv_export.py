@@ -30,6 +30,7 @@ from hyperextract.utils.logging import get_logger
 
 from .common import (
     HYPEREDGE_MEMBER_SEP,
+    default_edge_id,
     incident_ids,
     resolve_nodes,
     scalar_fields,
@@ -187,7 +188,7 @@ def _hyperedge_rows(
         if not known:
             skipped += 1
             continue
-        edge_id = _edge_id(edge, index, edge_id_extractor)
+        edge_id = default_edge_id(edge, index, edge_id_extractor)
         # Sorted for stable output; binary CSV must not sort endpoints.
         members_cell = HYPEREDGE_MEMBER_SEP.join(sorted(known))
         row: dict[str, Any] = {"id": edge_id, "members": members_cell}
@@ -201,19 +202,6 @@ def _hyperedge_rows(
             row[key] = value
         rows.append(row)
     return rows, skipped
-
-
-def _edge_id(edge: Any, index: int, extractor: Callable[[Any], str] | None) -> str:
-    if extractor is None:
-        return f"e{index}"
-    try:
-        value = extractor(edge)
-    except Exception as exc:
-        logger.debug("export.csv: edge_id_extractor raised %s", exc)
-        return f"e{index}"
-    if value in (None, ""):
-        return f"e{index}"
-    return str(value)
 
 
 def _write_csv(path: Path, primary: Sequence[str], rows: list[dict[str, Any]]) -> None:

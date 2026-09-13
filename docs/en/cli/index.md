@@ -33,8 +33,12 @@ he --version
 | `he parse` | Extract knowledge from documents | `-t` template, `-o` output, `-l` language, `--source` attribution |
 | `he show` | Visualize knowledge graph | — |
 | `he export obsidian` | Export to an Obsidian vault | `-o` output, `--name`, `-f` force |
+<<<<<<< HEAD
 | `he export graphml` | Export a pairwise graph to GraphML | `-o` output file |
 | `he export jsonld` | Export pairwise edges and N-ary hyperedges to JSON-LD | `-o` output file, `-f` force |
+=======
+| `he export graphml` | Export pairwise `<edge>` and N-ary `<hyperedge>` GraphML | `-o` output file, `-f` force |
+>>>>>>> origin/main
 | `he export csv` | Export nodes/edges as CSV tables | `-o` directory, `-f` force |
 | `he search` | Semantic search in knowledge abstract | `-n` top-k results, `--source`, `--tag` |
 | `he talk` | Chat with knowledge abstract | `-i` interactive, `-q` query |
@@ -173,8 +177,12 @@ he show ./output/
 - **[`he talk`](commands/talk.md)** — Chat with knowledge abstract
 - **[`he info`](commands/info.md)** — View knowledge abstract statistics
 - **[`he export obsidian`](commands/export.md)** — Export to an Obsidian vault
+<<<<<<< HEAD
 - **[`he export graphml`](commands/export.md#he-export-graphml)** — Export a pairwise graph to GraphML
 - **[`he export jsonld`](commands/export.md#he-export-jsonld)** — Export pairwise edges and N-ary hyperedges to JSON-LD
+=======
+- **[`he export graphml`](commands/export.md#he-export-graphml)** — Export pairwise `<edge>` and N-ary `<hyperedge>` GraphML
+>>>>>>> origin/main
 - **[`he export csv`](commands/export.md#he-export-csv)** — Export nodes/edges as CSV tables
 
 ### Management

@@ -145,7 +145,7 @@ def main(
                     ),
                     (
                         "he export graphml <ka_path> -o <file>",
-                        "Export pairwise graph to GraphML",
+                        "pairwise <edge> + <hyperedge>",
                     ),
                     (
                         "he export csv <ka_path> -o <dir>",
@@ -572,41 +572,54 @@ def _load_graph_ka_for_export(ka_path: str):
             console.print(f"[red]Error loading Knowledge Abstract:[/red] {e}")
             raise typer.Exit(1)
 
-    if not hasattr(ka, "export_obsidian"):
-        console.print(
-            "[red]Error:[/red] GraphML/CSV/JSON-LD export is only supported for "
-            "graph-type Knowledge Abstracts (graph, hypergraph, temporal/spatial graphs)."
-        )
+    from hyperextract.utils.exporters.ka import (
+        GRAPH_TYPE_ERROR,
+        GraphTypeError,
+        require_graph_ka,
+    )
+
+    try:
+        require_graph_ka(ka)
+    except GraphTypeError:
+        console.print(f"[red]Error:[/red] {GRAPH_TYPE_ERROR}")
         raise typer.Exit(1)
 
     return ka, path, template
-
-
-def _is_hypergraph_ka(ka) -> bool:
-    """True for AutoHypergraph; temporal/spatial graphs are pairwise."""
-    if type(ka).__name__ == "AutoHypergraph":
-        return True
-    meta = getattr(ka, "metadata", None)
-    return isinstance(meta, dict) and meta.get("type") == "hypergraph"
 
 
 @export_app.command(name="graphml")
 def export_graphml_cmd(
     ka_path: str = typer.Argument(..., help="Knowledge Abstract directory"),
     output: str = typer.Option(..., "--output", "-o", help="Output GraphML file"),
+    force: bool = typer.Option(
+        False, "--force", "-f", help="Overwrite an existing GraphML file"
+    ),
 ):
     """Export a knowledge graph to GraphML.
 
     Binary edges are written as `<edge source target>`. Edges with three
     or more endpoints are written as GraphML 1.0 `<hyperedge>` elements.
     """
-    from hyperextract.utils.exporters import GraphMLHypergraphError, export_to_graphml
+    from hyperextract.utils.exporters import GraphMLHypergraphError
+    from hyperextract.utils.exporters.common import resolve_export_file
+    from hyperextract.utils.exporters.ka import GraphTypeError, export_ka_graphml
 
     logger.info("command=export-graphml ka_path=%s output=%s", ka_path, output)
 
-    ka, _path, template = _load_graph_ka_for_export(ka_path)
-
     output_path = Path(output)
+    try:
+        resolve_export_file(output_path, overwrite=force)
+    except FileExistsError:
+        console.print(
+            "[red]Error:[/red] Output file already exists. "
+            "Use --force / -f to overwrite it."
+        )
+        raise typer.Exit(1)
+    except IsADirectoryError as e:
+        console.print(f"[red]Error:[/red] {e}")
+        raise typer.Exit(1)
+
+    ka, _path, template = _load_graph_ka_for_export(ka_path)
     console.print(f"[blue]Knowledge Abstract:[/blue] {ka_path}")
     console.print(f"[blue]Template:[/blue] {template}")
     console.print(f"[blue]Output file:[/blue] {output}")
@@ -614,16 +627,18 @@ def export_graphml_cmd(
 
     with console.status("[bold blue]Exporting to GraphML..."):
         try:
-            export_to_graphml(
-                ka.nodes,
-                ka.edges,
-                node_id_extractor=ka.node_key_extractor,
-                incident_nodes_extractor=ka.nodes_in_edge_extractor,
-                file_path=output_path,
-                edge_id_extractor=getattr(ka, "edge_key_extractor", None),
-            )
+            export_ka_graphml(ka, output_path, overwrite=force)
+        except GraphTypeError as e:
+            console.print(f"[red]Error:[/red] {e}")
+            raise typer.Exit(1)
         except GraphMLHypergraphError as e:
             console.print(f"[red]Error:[/red] {e}")
+            raise typer.Exit(1)
+        except FileExistsError:
+            console.print(
+                "[red]Error:[/red] Output file already exists. "
+                "Use --force / -f to overwrite it."
+            )
             raise typer.Exit(1)
         except Exception as e:
             console.print(f"[red]Error during export:[/red] {e}")
@@ -698,7 +713,11 @@ def export_csv_cmd(
     ),
 ):
     """Export a Knowledge Abstract to node and edge CSV tables."""
-    from hyperextract.utils.exporters import export_to_csv
+    from hyperextract.utils.exporters.ka import (
+        GraphTypeError,
+        export_ka_csv,
+        is_hypergraph_ka,
+    )
 
     logger.info("command=export-csv ka_path=%s output=%s", ka_path, output)
 
@@ -714,7 +733,7 @@ def export_csv_cmd(
         raise typer.Exit(1)
 
     ka, _path, template = _load_graph_ka_for_export(ka_path)
-    hypergraph = _is_hypergraph_ka(ka)
+    hypergraph = is_hypergraph_ka(ka)
 
     console.print(f"[blue]Knowledge Abstract:[/blue] {ka_path}")
     console.print(f"[blue]Template:[/blue] {template}")
@@ -723,16 +742,10 @@ def export_csv_cmd(
 
     with console.status("[bold blue]Exporting to CSV..."):
         try:
-            export_to_csv(
-                ka.nodes,
-                ka.edges,
-                node_id_extractor=ka.node_key_extractor,
-                incident_nodes_extractor=ka.nodes_in_edge_extractor,
-                folder_path=output_path,
-                edge_id_extractor=getattr(ka, "edge_key_extractor", None),
-                hypergraph=hypergraph,
-                overwrite=force,
-            )
+            export_ka_csv(ka, output_path, overwrite=force)
+        except GraphTypeError as e:
+            console.print(f"[red]Error:[/red] {e}")
+            raise typer.Exit(1)
         except FileExistsError:
             console.print(
                 "[red]Error:[/red] Output directory already exists and is not empty. "
@@ -870,6 +883,59 @@ def info(
             )
 
 
+def _print_jsonish(payload) -> None:
+    import json
+
+    if isinstance(payload, (dict, list)):
+        console.print_json(json.dumps(payload, indent=2, ensure_ascii=False))
+    else:
+        console.print(str(payload))
+    console.print()
+
+
+def _print_search_section(title: str, items) -> None:
+    console.print(f"[bold cyan]{title}[/bold cyan]")
+    if not items:
+        console.print("[dim](none)[/dim]")
+        console.print()
+        return
+    if isinstance(items, dict):
+        _print_jsonish(items)
+        return
+    for item in items:
+        _print_jsonish(item)
+
+
+def _print_search_hits(hits) -> None:
+    """Print `he search` hits from :class:`SearchHits`."""
+    if hits.count == 0:
+        console.print("[yellow]No results found.[/yellow]")
+        return
+
+    console.print(f"[bold green]Found {hits.count} result(s):[/bold green]")
+    console.print()
+
+    if hits.kind == "mapping":
+        preferred = [key for key in ("themes", "entities") if key in hits.payload]
+        other = [key for key in hits.payload if key not in preferred]
+        for key in preferred + other:
+            title = key[:1].upper() + key[1:] if key else key
+            _print_search_section(title, hits.payload[key])
+        return
+
+    if hits.kind == "graph":
+        _print_search_section("Nodes", hits.payload.get("nodes") or [])
+        _print_search_section("Edges", hits.payload.get("edges") or [])
+        community = hits.payload.get("community_context")
+        if isinstance(community, dict) and community:
+            _print_search_section("Community", community)
+        return
+
+    for i, result in enumerate(hits.payload.get("results") or [], 1):
+        console.print(f"[bold cyan]Result {i}:[/bold cyan]")
+        _print_jsonish(result)
+
+
 @app.command(name="search")
 def search(
     ka_path: str = typer.Argument(..., help="Knowledge Abstract directory"),
@@ -883,8 +949,9 @@ def search(
     ),
 ):
     """Semantic search in Knowledge Abstract."""
+    from hyperextract.utils.search_results import coerce_search_results
+
     logger.info("command=search ka_path=%s query=%s top_k=%d", ka_path, query, top_k)
-    import json
 
     validate_config()
 
@@ -930,32 +997,15 @@ def search(
                         )
                         raise typer.Exit(1)
             results = ka.search(query, top_k=top_k, **scope_kwargs)
-            logger.info("stage=search_complete results=%d", len(results))
+            hits = coerce_search_results(results)
+            logger.info("stage=search_complete results=%d", hits.count)
 
         except Exception as e:
             console.print(f"[red]Error:[/red] {e}")
             raise typer.Exit(1)
 
     console.print()
-    if not results:
-        console.print("[yellow]No results found.[/yellow]")
-    else:
-        console.print(f"[bold green]Found {len(results)} result(s):[/bold green]")
-        console.print()
-
-        for i, result in enumerate(results, 1):
-            console.print(f"[bold cyan]Result {i}:[/bold cyan]")
-            if hasattr(result, "model_dump"):
-                console.print_json(
-                    json.dumps(result.model_dump(), indent=2, ensure_ascii=False)
-                )
-            elif hasattr(result, "dict"):
-                console.print_json(
-                    json.dumps(result.dict(), indent=2, ensure_ascii=False)
-                )
-            else:
-                console.print(str(result))
-            console.print()
+    _print_search_hits(hits)
 
     console.print("[dim]Continue:[/dim]")
     console.print(
@@ -1143,10 +1193,60 @@ def talk(
         console.print(f"[dim]  he show {ka_path}              # Visualize[/dim]")
 
 
+def _feed_one_document(
+    ka,
+    output_path: Path,
+    input: str,
+    source: str | None,
+    refeed: bool,
+    store_doc: bool,
+) -> bool:
+    """Ingest one file or stdin into ``ka``. Returns False if skipped unchanged."""
+    require_supported_text_input(input)
+    text = read_input(input)
+    console.print(
+        f"[dim]Input {Path(input).name if input != '-' else 'stdin'}: "
+        f"{len(text)} characters"
+        f"{f' (source: {source})' if source else ''}[/dim]"
+    )
+
+    text_hash_to_record = None
+    if source:
+        text_hash_to_record = hashlib.sha256(text.encode("utf-8")).hexdigest()
+        if not refeed:
+            recorded = ka.source_content_hash(source)
+            if recorded == text_hash_to_record:
+                logger.info("stage=source_unchanged source=%s", source)
+                console.print(
+                    f"[yellow]Source '{source}' is unchanged (content hash "
+                    "matches) — nothing to do.[/yellow] "
+                    "Use --refeed to re-ingest anyway."
+                )
+                return False
+
+    if store_doc and source:
+        from hyperextract.utils.document_store import SourceDocumentStore
+
+        original_name = "stdin.txt" if input == "-" else Path(input).name
+        store = SourceDocumentStore(output_path)
+        if input == "-":
+            stored_doc = store.store_text(source, text, original_name)
+        else:
+            stored_doc = store.store_file(source, input)
+        console.print(f"[dim]Document archived: {stored_doc}[/dim]")
+
+    logger.debug("stage=feed_text_invoked")
+    ka.feed_text(text, source_id=source, content_hash=text_hash_to_record)
+    logger.info("stage=knowledge_appended chars=%d source=%s", len(text), source)
+    return True
+
+
 @app.command(name="feed")
 def feed(
     ka_path: str = typer.Argument(..., help="Knowledge Abstract directory"),
-    input: str = typer.Argument(..., help="Input file path or '-' for stdin"),
+    input: str = typer.Argument(
+        ..., help="Input file path, directory, or '-' for stdin"
+    ),
     template: str | None = typer.Option(None, "--template", "-t", help="Template"),
     lang: str | None = typer.Option(None, "--lang", "-l", help="Language"),
     source: str | None = typer.Option(
@@ -1205,50 +1305,49 @@ def feed(
 
         ka.load(output_path)
 
-        progress.update(task, description="Reading input...")
-        require_supported_text_input(input)
-        text = read_input(input)
-        console.print(f"[dim]Input text: {len(text)} characters[/dim]")
+        input_path = Path(input) if input != "-" else None
+        ingested = 0
+        if input_path is not None and input_path.is_dir():
+            progress.update(task, description="Processing directory...")
+            text_files = collect_directory_text_inputs(input_path)
+            file_sources = [source or file_path.stem for file_path in text_files]
+            progress.update(task, description="Appending knowledge...")
+            for file_path, file_source in zip(text_files, file_sources):
+                if _feed_one_document(
+                    ka,
+                    output_path,
+                    str(file_path),
+                    file_source,
+                    refeed,
+                    store_doc,
+                ):
+                    ingested += 1
+            logger.info(
+                "stage=directory_feed_complete files=%d ingested=%d",
+                len(text_files),
+                ingested,
+            )
+        else:
+            progress.update(task, description="Reading input...")
+            if not _feed_one_document(
+                ka, output_path, input, source, refeed, store_doc
+            ):
+                raise typer.Exit(0)
+            ingested = 1
 
-        # Change detection: skip unchanged sources without any LLM calls.
-        text_hash_to_record = None
-        if source:
-            text_hash_to_record = hashlib.sha256(text.encode("utf-8")).hexdigest()
-            if not refeed:
-                recorded = ka.source_content_hash(source)
-                if recorded == text_hash_to_record:
-                    logger.info("stage=source_unchanged source=%s", source)
-                    console.print(
-                        f"[yellow]Source '{source}' is unchanged (content hash "
-                        "matches) — nothing to do.[/yellow] "
-                        "Use --refeed to re-ingest anyway."
-                    )
-                    raise typer.Exit(0)
-
-        # Archive the source document (provenance evidence, kept across
-        # rollbacks; purge with he remove --document ... --purge-documents).
-        stored_doc = None
-        if store_doc and source:
-            from hyperextract.utils.document_store import SourceDocumentStore
-
-            original_name = "stdin.txt" if input == "-" else Path(input).name
-            store = SourceDocumentStore(output_path)
-            if input == "-":
-                stored_doc = store.store_text(source, text, original_name)
-            else:
-                stored_doc = store.store_file(source, input)
-            console.print(f"[dim]Document archived: {stored_doc}[/dim]")
-
-        progress.update(task, description="Appending knowledge...")
-        logger.debug("stage=feed_text_invoked")
-        ka.feed_text(text, source_id=source, content_hash=text_hash_to_record)
-        logger.info("stage=knowledge_appended chars=%d", len(text))
-
-        progress.update(task, description="Saving data...")
-        ka.dump(output_path)
-        logger.info("stage=data_saved")
+        if ingested:
+            progress.update(task, description="Saving data...")
+            ka.dump(output_path)
+            logger.info("stage=data_saved")
 
     console.print()
+    if ingested == 0:
+        console.print(
+            "[yellow]No documents were ingested.[/yellow] "
+            "Supported files were unchanged or skipped."
+        )
+        return
+
     console.print(
         f"[bold green]Success![/bold green] Knowledge appended to {output_path}"
     )

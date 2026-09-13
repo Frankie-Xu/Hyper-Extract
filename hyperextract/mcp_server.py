@@ -6,7 +6,8 @@ deletes a KA.
 
 Tools:
     - list_templates  : list available extraction templates
-    - info            : stats for a knowledge abstract (no LLM needed)
+    - info            : stats for a knowledge abstract (chunks, timestamps,
+                        optional sources; no LLM needed)
     - search          : semantic retrieval over a KA (needs an index)
     - ask             : RAG question-answering over a KA (needs an index)
     - export_obsidian : export a KA to an Obsidian vault
@@ -82,14 +83,18 @@ def _dump(obj: Any) -> str:
 # ---------------------------------------------------------------------------
 
 
-def list_templates() -> str:
+def list_templates(include_methods: bool = True) -> str:
     """List the available knowledge-extraction templates.
+
+    Args:
+        include_methods: When true (default), include ``method/<name>``
+            entries the CLI lists and ``he parse -t`` accepts.
 
     Returns a JSON array of {name, type, description}.
     """
     from hyperextract.utils.template_engine import Template
 
-    templates = Template.list(include_methods=False)
+    templates = Template.list(include_methods=include_methods)
     out = []
     for name, cfg in sorted(templates.items()):
         desc = getattr(cfg, "description", "") or ""
@@ -101,13 +106,16 @@ def list_templates() -> str:
     return _dump(out)
 
 
-def info(ka_path: str) -> str:
+def info(ka_path: str, include_sources: bool = False) -> str:
     """Show information and statistics for a knowledge abstract.
 
     Args:
         ka_path: Path to the knowledge abstract directory.
+        include_sources: When true, include source-ledger rows (same files
+            ``he info --sources`` reads). Default false.
 
-    Returns JSON with template, language, node/edge counts, and index status.
+    Returns JSON with template, language, node/edge counts, optional chunks,
+    created/updated timestamps, index status, and optional sources.
     Does not require LLM/embedder configuration.
     """
     path = Path(ka_path)
@@ -116,9 +124,11 @@ def info(ka_path: str) -> str:
         return f"Not a knowledge abstract (no data.json): {ka_path}"
 
     data = json.loads(data_file.read_text(encoding="utf-8"))
+    chunks = 0
     if isinstance(data, dict):
         nodes = len(data.get("nodes", data.get("entities", [])))
         edges = len(data.get("edges", data.get("relations", [])))
+        chunks = len(data.get("chunks", []))
     elif isinstance(data, list):
         nodes, edges = len(data), 0
     else:
@@ -132,16 +142,61 @@ def info(ka_path: str) -> str:
     index_dir = path / "index"
     index_built = index_dir.exists() and any(index_dir.iterdir())
 
-    return _dump(
-        {
-            "path": str(path),
-            "template": meta.get("template"),
-            "lang": meta.get("lang"),
-            "nodes": nodes,
-            "edges": edges,
-            "index_built": index_built,
-        }
+    payload: dict[str, Any] = {
+        "path": str(path),
+        "template": meta.get("template"),
+        "lang": meta.get("lang"),
+        "nodes": nodes,
+        "edges": edges,
+        "index_built": index_built,
+    }
+    if chunks:
+        payload["chunks"] = chunks
+    if meta.get("created_at"):
+        payload["created"] = meta["created_at"]
+    if meta.get("updated_at"):
+        payload["updated"] = meta["updated_at"]
+    if include_sources:
+        payload["sources"] = _source_ledger_rows(path)
+    return _dump(payload)
+
+
+def _source_ledger_rows(path: Path) -> list[dict[str, Any]]:
+    """Collect source-ledger rows using the same files as ``he info --sources``."""
+    ledger_files = (
+        path / "sources_nodes.json",
+        path / "sources_edges.json",
+        path / "sources_chunks.json",
+        path / "sources_items.json",
     )
+    combined: dict[str, dict[str, Any]] = {}
+    for ledger_path in ledger_files:
+        if not ledger_path.exists():
+            continue
+        try:
+            entries = json.loads(ledger_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError, TypeError, ValueError):
+            continue
+        if not isinstance(entries, list):
+            continue
+        for entry in entries:
+            if not isinstance(entry, dict):
+                continue
+            sid = entry.get("source_id")
+            if sid is None:
+                continue
+            record = combined.setdefault(
+                str(sid),
+                {
+                    "source_id": str(sid),
+                    "raw_items": 0,
+                    "content_hash": entry.get("content_hash"),
+                },
+            )
+            record["raw_items"] += len(entry.get("raw_items", []))
+            if record.get("content_hash") is None:
+                record["content_hash"] = entry.get("content_hash")
+    return [combined[key] for key in sorted(combined)]
 
 
 def search(ka_path: str, query: str, top_k: int = 5) -> str:
@@ -152,24 +207,24 @@ def search(ka_path: str, query: str, top_k: int = 5) -> str:
         query: Natural-language search query.
         top_k: Maximum number of results (for graphs: nodes and edges each).
 
-    Returns matching nodes/edges as JSON. The KA must have an index
-    (build it with `he build-index`).
+    Returns JSON shaped by the AutoType search return via SearchHits:
+
+    - 2-tuple → ``{"nodes": [...], "edges": [...]}``
+    - 3-tuple → same plus ``community_context`` (``null`` is written)
+    - dict → passed through (values recursively dumped)
+    - list → ``{"results": [...]}``
+
+    The KA must have an index (build it with `he build-index`).
     """
+    from hyperextract.utils.search_results import coerce_search_results
+
     ka = _load_ka(ka_path)
     try:
         results = ka.search(query, top_k=top_k)
     except ValueError as e:
         return f"Cannot search: {e}. Build the index first with `he build-index {ka_path}`."
 
-    if isinstance(results, tuple):
-        nodes, edges = results
-        return _dump(
-            {
-                "nodes": [_model_to_dict(n) for n in nodes],
-                "edges": [_model_to_dict(e) for e in edges],
-            }
-        )
-    return _dump({"results": [_model_to_dict(r) for r in results]})
+    return _dump(coerce_search_results(results).payload)
 
 
 def ask(ka_path: str, question: str, top_k: int = 5) -> str:
@@ -221,50 +276,29 @@ def export_obsidian(
     return f"Exported {count} notes to {vault}"
 
 
-def _is_hypergraph_ka(ka) -> bool:
-    """True for AutoHypergraph; temporal/spatial graphs are pairwise."""
-    if type(ka).__name__ == "AutoHypergraph":
-        return True
-    meta = getattr(ka, "metadata", None)
-    return isinstance(meta, dict) and meta.get("type") == "hypergraph"
-
-
-def _require_graph_ka(ka) -> str | None:
-    if hasattr(ka, "export_obsidian"):
-        return None
-    return (
-        "GraphML/CSV export is only supported for graph-type knowledge abstracts "
-        "(graph, hypergraph, temporal/spatial graphs)."
-    )
-
-
-def export_graphml(ka_path: str, output: str) -> str:
+def export_graphml(ka_path: str, output: str, overwrite: bool = False) -> str:
     """Export a knowledge abstract to GraphML.
 
     Args:
         ka_path: Path to the knowledge abstract directory.
         output: Destination ``.graphml`` file.
+        overwrite: Overwrite an existing, non-empty GraphML file.
 
-    Uses the same ``export_to_graphml`` implementation as ``he export graphml``.
+    Uses the same ``export_ka_graphml`` adapter as ``he export graphml``.
     Does not create, mutate, or delete the KA.
     """
-    from hyperextract.utils.exporters import GraphMLHypergraphError, export_to_graphml
+    from hyperextract.utils.exporters import GraphMLHypergraphError
+    from hyperextract.utils.exporters.ka import GraphTypeError, export_ka_graphml
 
     ka = _load_ka(ka_path)
-    err = _require_graph_ka(ka)
-    if err:
-        return err
     try:
-        dest = export_to_graphml(
-            ka.nodes,
-            ka.edges,
-            node_id_extractor=ka.node_key_extractor,
-            incident_nodes_extractor=ka.nodes_in_edge_extractor,
-            file_path=output,
-            edge_id_extractor=getattr(ka, "edge_key_extractor", None),
-        )
+        dest = export_ka_graphml(ka, output, overwrite=overwrite)
+    except GraphTypeError as e:
+        return str(e)
     except GraphMLHypergraphError as e:
         return str(e)
+    except FileExistsError as e:
+        return f"{e} Pass overwrite=true to overwrite it."
     return f"Wrote GraphML to {dest}"
 
 
@@ -276,37 +310,25 @@ def export_csv(ka_path: str, output: str, overwrite: bool = False) -> str:
         output: Destination directory.
         overwrite: Allow writing into an existing, non-empty directory.
 
-    Uses the same ``export_to_csv`` implementation as ``he export csv``.
+    Uses the same ``export_ka_csv`` adapter as ``he export csv``.
     Does not create, mutate, or delete the KA.
     """
-    from hyperextract.utils.exporters import export_to_csv
+    from hyperextract.utils.exporters.ka import (
+        GraphTypeError,
+        export_ka_csv,
+        is_hypergraph_ka,
+    )
 
     ka = _load_ka(ka_path)
-    err = _require_graph_ka(ka)
-    if err:
-        return err
-    hypergraph = _is_hypergraph_ka(ka)
+    hypergraph = is_hypergraph_ka(ka)
     try:
-        dest = export_to_csv(
-            ka.nodes,
-            ka.edges,
-            node_id_extractor=ka.node_key_extractor,
-            incident_nodes_extractor=ka.nodes_in_edge_extractor,
-            folder_path=output,
-            edge_id_extractor=getattr(ka, "edge_key_extractor", None),
-            hypergraph=hypergraph,
-            overwrite=overwrite,
-        )
+        dest = export_ka_csv(ka, output, overwrite=overwrite)
+    except GraphTypeError as e:
+        return str(e)
     except FileExistsError as e:
         return f"{e} Pass overwrite=true to write into it."
     written = "nodes.csv + hyperedges.csv" if hypergraph else "nodes.csv + edges.csv"
     return f"Wrote {written} to {dest}"
-
-
-def _model_to_dict(item: Any) -> Any:
-    if hasattr(item, "model_dump"):
-        return item.model_dump()
-    return item
 
 
 # ---------------------------------------------------------------------------
