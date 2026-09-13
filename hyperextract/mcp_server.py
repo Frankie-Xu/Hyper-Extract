@@ -152,24 +152,24 @@ def search(ka_path: str, query: str, top_k: int = 5) -> str:
         query: Natural-language search query.
         top_k: Maximum number of results (for graphs: nodes and edges each).
 
-    Returns matching nodes/edges as JSON. The KA must have an index
-    (build it with `he build-index`).
+    Returns JSON shaped by the AutoType search return via SearchHits:
+
+    - 2-tuple → ``{"nodes": [...], "edges": [...]}``
+    - 3-tuple → same plus ``community_context`` (``null`` is written)
+    - dict → passed through (values recursively dumped)
+    - list → ``{"results": [...]}``
+
+    The KA must have an index (build it with `he build-index`).
     """
+    from hyperextract.utils.search_results import coerce_search_results
+
     ka = _load_ka(ka_path)
     try:
         results = ka.search(query, top_k=top_k)
     except ValueError as e:
         return f"Cannot search: {e}. Build the index first with `he build-index {ka_path}`."
 
-    if isinstance(results, tuple):
-        nodes, edges = results
-        return _dump(
-            {
-                "nodes": [_model_to_dict(n) for n in nodes],
-                "edges": [_model_to_dict(e) for e in edges],
-            }
-        )
-    return _dump({"results": [_model_to_dict(r) for r in results]})
+    return _dump(coerce_search_results(results).payload)
 
 
 def ask(ka_path: str, question: str, top_k: int = 5) -> str:
@@ -221,50 +221,29 @@ def export_obsidian(
     return f"Exported {count} notes to {vault}"
 
 
-def _is_hypergraph_ka(ka) -> bool:
-    """True for AutoHypergraph; temporal/spatial graphs are pairwise."""
-    if type(ka).__name__ == "AutoHypergraph":
-        return True
-    meta = getattr(ka, "metadata", None)
-    return isinstance(meta, dict) and meta.get("type") == "hypergraph"
-
-
-def _require_graph_ka(ka) -> str | None:
-    if hasattr(ka, "export_obsidian"):
-        return None
-    return (
-        "GraphML/CSV export is only supported for graph-type knowledge abstracts "
-        "(graph, hypergraph, temporal/spatial graphs)."
-    )
-
-
-def export_graphml(ka_path: str, output: str) -> str:
+def export_graphml(ka_path: str, output: str, overwrite: bool = False) -> str:
     """Export a knowledge abstract to GraphML.
 
     Args:
         ka_path: Path to the knowledge abstract directory.
         output: Destination ``.graphml`` file.
+        overwrite: Overwrite an existing, non-empty GraphML file.
 
-    Uses the same ``export_to_graphml`` implementation as ``he export graphml``.
+    Uses the same ``export_ka_graphml`` adapter as ``he export graphml``.
     Does not create, mutate, or delete the KA.
     """
-    from hyperextract.utils.exporters import GraphMLHypergraphError, export_to_graphml
+    from hyperextract.utils.exporters import GraphMLHypergraphError
+    from hyperextract.utils.exporters.ka import GraphTypeError, export_ka_graphml
 
     ka = _load_ka(ka_path)
-    err = _require_graph_ka(ka)
-    if err:
-        return err
     try:
-        dest = export_to_graphml(
-            ka.nodes,
-            ka.edges,
-            node_id_extractor=ka.node_key_extractor,
-            incident_nodes_extractor=ka.nodes_in_edge_extractor,
-            file_path=output,
-            edge_id_extractor=getattr(ka, "edge_key_extractor", None),
-        )
+        dest = export_ka_graphml(ka, output, overwrite=overwrite)
+    except GraphTypeError as e:
+        return str(e)
     except GraphMLHypergraphError as e:
         return str(e)
+    except FileExistsError as e:
+        return f"{e} Pass overwrite=true to overwrite it."
     return f"Wrote GraphML to {dest}"
 
 
@@ -276,37 +255,25 @@ def export_csv(ka_path: str, output: str, overwrite: bool = False) -> str:
         output: Destination directory.
         overwrite: Allow writing into an existing, non-empty directory.
 
-    Uses the same ``export_to_csv`` implementation as ``he export csv``.
+    Uses the same ``export_ka_csv`` adapter as ``he export csv``.
     Does not create, mutate, or delete the KA.
     """
-    from hyperextract.utils.exporters import export_to_csv
+    from hyperextract.utils.exporters.ka import (
+        GraphTypeError,
+        export_ka_csv,
+        is_hypergraph_ka,
+    )
 
     ka = _load_ka(ka_path)
-    err = _require_graph_ka(ka)
-    if err:
-        return err
-    hypergraph = _is_hypergraph_ka(ka)
+    hypergraph = is_hypergraph_ka(ka)
     try:
-        dest = export_to_csv(
-            ka.nodes,
-            ka.edges,
-            node_id_extractor=ka.node_key_extractor,
-            incident_nodes_extractor=ka.nodes_in_edge_extractor,
-            folder_path=output,
-            edge_id_extractor=getattr(ka, "edge_key_extractor", None),
-            hypergraph=hypergraph,
-            overwrite=overwrite,
-        )
+        dest = export_ka_csv(ka, output, overwrite=overwrite)
+    except GraphTypeError as e:
+        return str(e)
     except FileExistsError as e:
         return f"{e} Pass overwrite=true to write into it."
     written = "nodes.csv + hyperedges.csv" if hypergraph else "nodes.csv + edges.csv"
     return f"Wrote {written} to {dest}"
-
-
-def _model_to_dict(item: Any) -> Any:
-    if hasattr(item, "model_dump"):
-        return item.model_dump()
-    return item
 
 
 # ---------------------------------------------------------------------------

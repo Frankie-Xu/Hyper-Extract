@@ -145,7 +145,7 @@ def main(
                     ),
                     (
                         "he export graphml <ka_path> -o <file>",
-                        "Export pairwise graph to GraphML",
+                        "pairwise <edge> + <hyperedge>",
                     ),
                     (
                         "he export csv <ka_path> -o <dir>",
@@ -572,41 +572,54 @@ def _load_graph_ka_for_export(ka_path: str):
             console.print(f"[red]Error loading Knowledge Abstract:[/red] {e}")
             raise typer.Exit(1)
 
-    if not hasattr(ka, "export_obsidian"):
-        console.print(
-            "[red]Error:[/red] GraphML/CSV export is only supported for graph-type "
-            "Knowledge Abstracts (graph, hypergraph, temporal/spatial graphs)."
-        )
+    from hyperextract.utils.exporters.ka import (
+        GRAPH_TYPE_ERROR,
+        GraphTypeError,
+        require_graph_ka,
+    )
+
+    try:
+        require_graph_ka(ka)
+    except GraphTypeError:
+        console.print(f"[red]Error:[/red] {GRAPH_TYPE_ERROR}")
         raise typer.Exit(1)
 
     return ka, path, template
-
-
-def _is_hypergraph_ka(ka) -> bool:
-    """True for AutoHypergraph; temporal/spatial graphs are pairwise."""
-    if type(ka).__name__ == "AutoHypergraph":
-        return True
-    meta = getattr(ka, "metadata", None)
-    return isinstance(meta, dict) and meta.get("type") == "hypergraph"
 
 
 @export_app.command(name="graphml")
 def export_graphml_cmd(
     ka_path: str = typer.Argument(..., help="Knowledge Abstract directory"),
     output: str = typer.Option(..., "--output", "-o", help="Output GraphML file"),
+    force: bool = typer.Option(
+        False, "--force", "-f", help="Overwrite an existing GraphML file"
+    ),
 ):
     """Export a knowledge graph to GraphML.
 
     Binary edges are written as `<edge source target>`. Edges with three
     or more endpoints are written as GraphML 1.0 `<hyperedge>` elements.
     """
-    from hyperextract.utils.exporters import GraphMLHypergraphError, export_to_graphml
+    from hyperextract.utils.exporters import GraphMLHypergraphError
+    from hyperextract.utils.exporters.common import resolve_export_file
+    from hyperextract.utils.exporters.ka import GraphTypeError, export_ka_graphml
 
     logger.info("command=export-graphml ka_path=%s output=%s", ka_path, output)
 
-    ka, _path, template = _load_graph_ka_for_export(ka_path)
-
     output_path = Path(output)
+    try:
+        resolve_export_file(output_path, overwrite=force)
+    except FileExistsError:
+        console.print(
+            "[red]Error:[/red] Output file already exists. "
+            "Use --force / -f to overwrite it."
+        )
+        raise typer.Exit(1)
+    except IsADirectoryError as e:
+        console.print(f"[red]Error:[/red] {e}")
+        raise typer.Exit(1)
+
+    ka, _path, template = _load_graph_ka_for_export(ka_path)
     console.print(f"[blue]Knowledge Abstract:[/blue] {ka_path}")
     console.print(f"[blue]Template:[/blue] {template}")
     console.print(f"[blue]Output file:[/blue] {output}")
@@ -614,16 +627,18 @@ def export_graphml_cmd(
 
     with console.status("[bold blue]Exporting to GraphML..."):
         try:
-            export_to_graphml(
-                ka.nodes,
-                ka.edges,
-                node_id_extractor=ka.node_key_extractor,
-                incident_nodes_extractor=ka.nodes_in_edge_extractor,
-                file_path=output_path,
-                edge_id_extractor=getattr(ka, "edge_key_extractor", None),
-            )
+            export_ka_graphml(ka, output_path, overwrite=force)
+        except GraphTypeError as e:
+            console.print(f"[red]Error:[/red] {e}")
+            raise typer.Exit(1)
         except GraphMLHypergraphError as e:
             console.print(f"[red]Error:[/red] {e}")
+            raise typer.Exit(1)
+        except FileExistsError:
+            console.print(
+                "[red]Error:[/red] Output file already exists. "
+                "Use --force / -f to overwrite it."
+            )
             raise typer.Exit(1)
         except Exception as e:
             console.print(f"[red]Error during export:[/red] {e}")
@@ -644,7 +659,11 @@ def export_csv_cmd(
     ),
 ):
     """Export a Knowledge Abstract to node and edge CSV tables."""
-    from hyperextract.utils.exporters import export_to_csv
+    from hyperextract.utils.exporters.ka import (
+        GraphTypeError,
+        export_ka_csv,
+        is_hypergraph_ka,
+    )
 
     logger.info("command=export-csv ka_path=%s output=%s", ka_path, output)
 
@@ -660,7 +679,7 @@ def export_csv_cmd(
         raise typer.Exit(1)
 
     ka, _path, template = _load_graph_ka_for_export(ka_path)
-    hypergraph = _is_hypergraph_ka(ka)
+    hypergraph = is_hypergraph_ka(ka)
 
     console.print(f"[blue]Knowledge Abstract:[/blue] {ka_path}")
     console.print(f"[blue]Template:[/blue] {template}")
@@ -669,16 +688,10 @@ def export_csv_cmd(
 
     with console.status("[bold blue]Exporting to CSV..."):
         try:
-            export_to_csv(
-                ka.nodes,
-                ka.edges,
-                node_id_extractor=ka.node_key_extractor,
-                incident_nodes_extractor=ka.nodes_in_edge_extractor,
-                folder_path=output_path,
-                edge_id_extractor=getattr(ka, "edge_key_extractor", None),
-                hypergraph=hypergraph,
-                overwrite=force,
-            )
+            export_ka_csv(ka, output_path, overwrite=force)
+        except GraphTypeError as e:
+            console.print(f"[red]Error:[/red] {e}")
+            raise typer.Exit(1)
         except FileExistsError:
             console.print(
                 "[red]Error:[/red] Output directory already exists and is not empty. "
@@ -816,6 +829,59 @@ def info(
             )
 
 
+def _print_jsonish(payload) -> None:
+    import json
+
+    if isinstance(payload, (dict, list)):
+        console.print_json(json.dumps(payload, indent=2, ensure_ascii=False))
+    else:
+        console.print(str(payload))
+    console.print()
+
+
+def _print_search_section(title: str, items) -> None:
+    console.print(f"[bold cyan]{title}[/bold cyan]")
+    if not items:
+        console.print("[dim](none)[/dim]")
+        console.print()
+        return
+    if isinstance(items, dict):
+        _print_jsonish(items)
+        return
+    for item in items:
+        _print_jsonish(item)
+
+
+def _print_search_hits(hits) -> None:
+    """Print `he search` hits from :class:`SearchHits`."""
+    if hits.count == 0:
+        console.print("[yellow]No results found.[/yellow]")
+        return
+
+    console.print(f"[bold green]Found {hits.count} result(s):[/bold green]")
+    console.print()
+
+    if hits.kind == "mapping":
+        preferred = [key for key in ("themes", "entities") if key in hits.payload]
+        other = [key for key in hits.payload if key not in preferred]
+        for key in preferred + other:
+            title = key[:1].upper() + key[1:] if key else key
+            _print_search_section(title, hits.payload[key])
+        return
+
+    if hits.kind == "graph":
+        _print_search_section("Nodes", hits.payload.get("nodes") or [])
+        _print_search_section("Edges", hits.payload.get("edges") or [])
+        community = hits.payload.get("community_context")
+        if isinstance(community, dict) and community:
+            _print_search_section("Community", community)
+        return
+
+    for i, result in enumerate(hits.payload.get("results") or [], 1):
+        console.print(f"[bold cyan]Result {i}:[/bold cyan]")
+        _print_jsonish(result)
+
+
 @app.command(name="search")
 def search(
     ka_path: str = typer.Argument(..., help="Knowledge Abstract directory"),
@@ -829,8 +895,9 @@ def search(
     ),
 ):
     """Semantic search in Knowledge Abstract."""
+    from hyperextract.utils.search_results import coerce_search_results
+
     logger.info("command=search ka_path=%s query=%s top_k=%d", ka_path, query, top_k)
-    import json
 
     validate_config()
 
@@ -876,32 +943,15 @@ def search(
                         )
                         raise typer.Exit(1)
             results = ka.search(query, top_k=top_k, **scope_kwargs)
-            logger.info("stage=search_complete results=%d", len(results))
+            hits = coerce_search_results(results)
+            logger.info("stage=search_complete results=%d", hits.count)
 
         except Exception as e:
             console.print(f"[red]Error:[/red] {e}")
             raise typer.Exit(1)
 
     console.print()
-    if not results:
-        console.print("[yellow]No results found.[/yellow]")
-    else:
-        console.print(f"[bold green]Found {len(results)} result(s):[/bold green]")
-        console.print()
-
-        for i, result in enumerate(results, 1):
-            console.print(f"[bold cyan]Result {i}:[/bold cyan]")
-            if hasattr(result, "model_dump"):
-                console.print_json(
-                    json.dumps(result.model_dump(), indent=2, ensure_ascii=False)
-                )
-            elif hasattr(result, "dict"):
-                console.print_json(
-                    json.dumps(result.dict(), indent=2, ensure_ascii=False)
-                )
-            else:
-                console.print(str(result))
-            console.print()
+    _print_search_hits(hits)
 
     console.print("[dim]Continue:[/dim]")
     console.print(
