@@ -35,9 +35,7 @@ he --version
 | `he export obsidian` | 导出为 Obsidian 知识库 | `-o` 输出, `--name`, `-f` 强制 |
 | `he export graphml` | 导出二元 `<edge>` 与 N 元 `<hyperedge>` GraphML | `-o` 输出文件, `-f` 强制 |
 | `he export jsonld` | 将二元边与 N 元超边导出为 JSON-LD | `-o` 输出文件, `-f` 强制 |
-=======
 | `he export cypher` | 导出 Neo4j 兼容 MERGE（N 元边为 Hyperedge 节点） | `-o` 输出文件, `-f` 强制 |
->>>>>>> pr-141-src
 | `he export csv` | 将节点/边导出为 CSV 表 | `-o` 目录, `-f` 强制 |
 | `he search` | 知识库语义搜索 | `-n` top-k 结果数, `--source`, `--tag` |
 | `he talk` | 与知识库对话 | `-i` 交互模式, `-q` 查询 |
@@ -178,9 +176,7 @@ he show ./output/
 - **[`he export obsidian`](commands/export.md)** — 导出为 Obsidian 知识库
 - **[`he export graphml`](commands/export.md#he-export-graphml)** — 导出二元 `<edge>` 与 N 元 `<hyperedge>` GraphML
 - **[`he export jsonld`](commands/export.md#he-export-jsonld)** — 将二元边与 N 元超边导出为 JSON-LD
-=======
 - **[`he export cypher`](commands/export.md#he-export-cypher)** — 导出 Neo4j 兼容的 Cypher MERGE 脚本
->>>>>>> pr-141-src
 - **[`he export csv`](commands/export.md#he-export-csv)** — 将节点/边导出为 CSV 表
 
 ### 管理

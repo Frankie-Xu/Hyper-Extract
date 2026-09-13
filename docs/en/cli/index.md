@@ -35,9 +35,7 @@ he --version
 | `he export obsidian` | Export to an Obsidian vault | `-o` output, `--name`, `-f` force |
 | `he export graphml` | Export pairwise `<edge>` and N-ary `<hyperedge>` GraphML | `-o` output file, `-f` force |
 | `he export jsonld` | Export pairwise edges and N-ary hyperedges to JSON-LD | `-o` output file, `-f` force |
-=======
 | `he export cypher` | Export Neo4j-compatible MERGE (N-ary as Hyperedge nodes) | `-o` output file, `-f` force |
->>>>>>> pr-141-src
 | `he export csv` | Export nodes/edges as CSV tables | `-o` directory, `-f` force |
 | `he search` | Semantic search in knowledge abstract | `-n` top-k results, `--source`, `--tag` |
 | `he talk` | Chat with knowledge abstract | `-i` interactive, `-q` query |
@@ -178,9 +176,7 @@ he show ./output/
 - **[`he export obsidian`](commands/export.md)** — Export to an Obsidian vault
 - **[`he export graphml`](commands/export.md#he-export-graphml)** — Export pairwise `<edge>` and N-ary `<hyperedge>` GraphML
 - **[`he export jsonld`](commands/export.md#he-export-jsonld)** — Export pairwise edges and N-ary hyperedges to JSON-LD
-=======
 - **[`he export cypher`](commands/export.md#he-export-cypher)** — Export a Neo4j-compatible Cypher MERGE script
->>>>>>> pr-141-src
 - **[`he export csv`](commands/export.md#he-export-csv)** — Export nodes/edges as CSV tables
 
 ### Management
