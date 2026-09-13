@@ -663,21 +663,22 @@ def export_jsonld_cmd(
     Binary edges are `@type: Edge` with source/target. Edges with three
     or more endpoints are `@type: Hyperedge` with an endpoint list.
     """
-    from hyperextract.utils.exporters import export_to_jsonld
+    from hyperextract.utils.exporters.common import resolve_export_file
+    from hyperextract.utils.exporters.ka import GraphTypeError, export_ka_jsonld
 
     logger.info("command=export-jsonld ka_path=%s output=%s", ka_path, output)
 
     output_path = Path(output)
-    existing_nonempty = (
-        output_path.exists()
-        and output_path.is_file()
-        and output_path.stat().st_size > 0
-    )
-    if existing_nonempty and not force:
+    try:
+        resolve_export_file(output_path, overwrite=force)
+    except FileExistsError:
         console.print(
             "[red]Error:[/red] Output file already exists. "
             "Use --force / -f to overwrite it."
         )
+        raise typer.Exit(1)
+    except IsADirectoryError as e:
+        console.print(f"[red]Error:[/red] {e}")
         raise typer.Exit(1)
 
     ka, _path, template = _load_graph_ka_for_export(ka_path)
@@ -688,14 +689,16 @@ def export_jsonld_cmd(
 
     with console.status("[bold blue]Exporting to JSON-LD..."):
         try:
-            export_to_jsonld(
-                ka.nodes,
-                ka.edges,
-                node_id_extractor=ka.node_key_extractor,
-                incident_nodes_extractor=ka.nodes_in_edge_extractor,
-                file_path=output_path,
-                edge_id_extractor=getattr(ka, "edge_key_extractor", None),
+            export_ka_jsonld(ka, output_path, overwrite=force)
+        except GraphTypeError as e:
+            console.print(f"[red]Error:[/red] {e}")
+            raise typer.Exit(1)
+        except FileExistsError:
+            console.print(
+                "[red]Error:[/red] Output file already exists. "
+                "Use --force / -f to overwrite it."
             )
+            raise typer.Exit(1)
         except Exception as e:
             console.print(f"[red]Error during export:[/red] {e}")
             raise typer.Exit(1)
