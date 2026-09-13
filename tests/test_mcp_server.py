@@ -300,7 +300,7 @@ def test_export_graphml_rejects_non_graph(monkeypatch, tmp_path):
     monkeypatch.setattr(mcp_server, "_load_ka", lambda p: _ListKA())
     out = mcp_server.export_graphml("x", str(tmp_path / "out.graphml"))
     assert out == (
-        "Graph export (GraphML/CSV/JSON-LD) is only supported for graph-type "
+        "Graph export (GraphML/CSV/JSON-LD/Cypher) is only supported for graph-type "
         "knowledge abstracts (graph, hypergraph, temporal/spatial graphs)."
     )
 
@@ -314,6 +314,74 @@ def test_export_csv_rejects_non_graph_with_same_message(monkeypatch, tmp_path):
     csv_out = mcp_server.export_csv("x", str(tmp_path / "csv"))
     assert graphml == csv_out
     assert "graph-type knowledge abstracts" in graphml
+
+
+def test_export_cypher(monkeypatch, tmp_path):
+    g = _graph_with_index()
+    monkeypatch.setattr(mcp_server, "_load_ka", lambda p: g)
+    dest = tmp_path / "out.cypher"
+    out = mcp_server.export_cypher("x", str(dest))
+    assert dest.exists()
+    text = dest.read_text(encoding="utf-8")
+    assert "MERGE" in text
+    assert str(dest) in out
+
+
+class _HyperedgeEvent(BaseModel):
+    label: str
+    participants: list[str]
+
+
+def test_export_cypher_nary_is_hyperedge_not_clique(monkeypatch, tmp_path):
+    class _HyperKA:
+        nodes = [
+            Entity(name="A"),
+            Entity(name="B"),
+            Entity(name="C"),
+        ]
+        edges = [_HyperedgeEvent(label="meeting", participants=["C", "A", "B"])]
+        node_key_extractor = staticmethod(lambda n: n.name)
+        edge_key_extractor = staticmethod(lambda e: e.label)
+        nodes_in_edge_extractor = staticmethod(lambda e: tuple(e.participants))
+
+        def export_obsidian(self, *args, **kwargs):
+            return None
+
+    monkeypatch.setattr(mcp_server, "_load_ka", lambda p: _HyperKA())
+    dest = tmp_path / "out.cypher"
+    out = mcp_server.export_cypher("x", str(dest))
+    text = dest.read_text(encoding="utf-8")
+    assert ":Hyperedge" in text
+    assert "[:IN]" in text
+    assert text.count("[:IN]") == 3
+    assert "-[:REL]" not in text
+    assert str(dest) in out
+
+
+def test_export_cypher_requires_overwrite(monkeypatch, tmp_path):
+    g = _graph_with_index()
+    monkeypatch.setattr(mcp_server, "_load_ka", lambda p: g)
+    dest = tmp_path / "out.cypher"
+    dest.write_text("KEEP-ME", encoding="utf-8")
+    out = mcp_server.export_cypher("x", str(dest))
+    assert "overwrite" in out.lower()
+    assert dest.read_text(encoding="utf-8") == "KEEP-ME"
+    out = mcp_server.export_cypher("x", str(dest), overwrite=True)
+    assert dest.read_text(encoding="utf-8") != "KEEP-ME"
+    assert str(dest) in out
+
+
+def test_export_cypher_rejects_non_graph(monkeypatch, tmp_path):
+    class _ListKA:
+        pass
+
+    monkeypatch.setattr(mcp_server, "_load_ka", lambda p: _ListKA())
+    out = mcp_server.export_cypher("x", str(tmp_path / "out.cypher"))
+    assert out == (
+        "Graph export (GraphML/CSV/JSON-LD/Cypher) is only supported for graph-type "
+        "knowledge abstracts (graph, hypergraph, temporal/spatial graphs)."
+    )
+    assert "Cypher" in out
 
 
 # ---------------------------------------------------------------------------

@@ -13,6 +13,7 @@ Tools:
     - export_obsidian : export a KA to an Obsidian vault
     - export_graphml  : export a KA to GraphML (same as `he export graphml`)
     - export_csv      : export a KA to CSV tables (same as `he export csv`)
+    - export_cypher   : export a KA to Cypher (same as `he export cypher`)
 
 Run it (stdio transport):
 
@@ -331,6 +332,29 @@ def export_csv(ka_path: str, output: str, overwrite: bool = False) -> str:
     return f"Wrote {written} to {dest}"
 
 
+def export_cypher(ka_path: str, output: str, overwrite: bool = False) -> str:
+    """Export a knowledge abstract to a Cypher MERGE script.
+
+    Args:
+        ka_path: Path to the knowledge abstract directory.
+        output: Destination ``.cypher`` file.
+        overwrite: Overwrite an existing, non-empty Cypher file.
+
+    Uses the same ``export_ka_cypher`` adapter as ``he export cypher``.
+    Does not create, mutate, or delete the KA.
+    """
+    from hyperextract.utils.exporters.ka import GraphTypeError, export_ka_cypher
+
+    ka = _load_ka(ka_path)
+    try:
+        dest = export_ka_cypher(ka, output, overwrite=overwrite)
+    except GraphTypeError as e:
+        return str(e)
+    except FileExistsError as e:
+        return f"{e} Pass overwrite=true to overwrite it."
+    return f"Wrote Cypher to {dest}"
+
+
 # ---------------------------------------------------------------------------
 # Server wiring
 # ---------------------------------------------------------------------------
@@ -354,6 +378,7 @@ def build_server():
         export_obsidian,
         export_graphml,
         export_csv,
+        export_cypher,
     ):
         server.tool()(fn)
     return server

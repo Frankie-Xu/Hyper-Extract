@@ -27,6 +27,7 @@ from hyperextract.utils.exporters.ka import (
     GRAPH_TYPE_ERROR,
     GraphTypeError,
     export_ka_csv,
+    export_ka_cypher,
     export_ka_graphml,
 )
 from hyperextract.utils.exporters.graphml import GRAPHML_NS
@@ -486,6 +487,34 @@ class TestCommonHelpers:
         assert dest.read_text(encoding="utf-8") == "KEEP"
         export_ka_graphml(fake, dest, overwrite=True)
         assert dest.read_text(encoding="utf-8") != "KEEP"
+
+    def test_export_ka_cypher_keeps_nary_hyperedge(self, tmp_path):
+        fake = FakeGraphKA(
+            [Entity(name="A"), Entity(name="B"), Entity(name="C")],
+            [Event(label="meeting", participants=["C", "A", "B"])],
+            hypergraph=True,
+        )
+        via_adapter = export_ka_cypher(fake, tmp_path / "via_ka.cypher")
+        via_encoder = export_to_cypher(
+            fake.nodes,
+            fake.edges,
+            node_id_extractor=fake.node_key_extractor,
+            incident_nodes_extractor=fake.nodes_in_edge_extractor,
+            file_path=tmp_path / "via_enc.cypher",
+            edge_id_extractor=fake.edge_key_extractor,
+        )
+        adapter_text = via_adapter.read_text(encoding="utf-8")
+        assert adapter_text == via_encoder.read_text(encoding="utf-8")
+        assert ":Hyperedge" in adapter_text
+        assert "[:IN]" in adapter_text
+        assert adapter_text.count("[:IN]") == 3
+        assert "-[:REL]" not in adapter_text
+
+    def test_export_ka_cypher_rejects_non_graph(self, tmp_path):
+        with pytest.raises(GraphTypeError) as exc:
+            export_ka_cypher(FakeListKA(), tmp_path / "g.cypher")
+        assert str(exc.value) == GRAPH_TYPE_ERROR
+        assert "Cypher" in GRAPH_TYPE_ERROR
 
 
 class TestCLIExport:
