@@ -26,7 +26,7 @@ from pydantic import BaseModel, Field, create_model
 from hyperextract.utils.logging import get_logger
 
 from .base import BaseAutoType
-from .graph import GraphEditMixin
+from .graph import GraphEditMixin, GraphIndexMixin
 
 logger = get_logger(__name__)
 
@@ -108,6 +108,7 @@ class EdgeListSchema(BaseModel, Generic[EdgeSchema]):
 
 class AutoHypergraph(
     GraphEditMixin,
+    GraphIndexMixin,
     BaseAutoType[AutoHypergraphSchema[NodeSchema, EdgeSchema]],
     Generic[NodeSchema, EdgeSchema],
 ):
@@ -645,194 +646,7 @@ class AutoHypergraph(
 
         return self.graph_schema(nodes=valid_nodes, edges=refined_edges)
 
-    # ==================== Merge Logic ====================
-
-    def merge_batch_data(
-        self,
-        data_list_or_tuple: list[AutoHypergraphSchema]
-        | tuple[list[list[NodeSchema]], list[list[EdgeSchema]]],
-    ) -> AutoHypergraphSchema:
-        """Merge multiple hypergraphs or node/edge tuples into one.
-
-        Supports two input formats:
-        - List of AutoHypergraphSchema objects (standard format)
-        - Tuple of (List[List[Node]], List[List[Edge]]) (optimization for batch processing)
-
-        Args:
-            data_list_or_tuple: Either a list of AutoHypergraphSchema objects or a tuple of
-                (nodes_lists, edges_lists) where each list contains items from multiple chunks.
-
-        Returns:
-            Merged hypergraph.
-        """
-        # Handle empty input (all batch results were None/filtered out)
-        if not data_list_or_tuple:
-            logger.warning("stage=merge_batch_empty input_is_empty")
-            return self.graph_schema(nodes=[], edges=[])
-
-        # Drop failed (None) chunk results from the list form; otherwise a single
-        # failed invoke() ([None]) falls through to the tuple branch and asserts.
-        if isinstance(data_list_or_tuple, list):
-            data_list_or_tuple = [g for g in data_list_or_tuple if g is not None]
-            if not data_list_or_tuple:
-                return self.graph_schema(nodes=[], edges=[])
-
-        if isinstance(data_list_or_tuple, list) and isinstance(
-            data_list_or_tuple[0], self.graph_schema
-        ):
-            # Format: List of AutoHypergraphSchema
-            all_nodes, all_edges = [], []
-            for graph in data_list_or_tuple:
-                all_nodes.extend(graph.nodes)
-                all_edges.extend(graph.edges)
-
-        else:
-            # Format: Tuple of (nodes_lists, edges_lists)
-            assert len(data_list_or_tuple) == 2, (
-                "Invalid input format for batch merging"
-            )
-            nodes_lists, edges_lists = data_list_or_tuple[0], data_list_or_tuple[1]
-
-            # Handle empty nodes/edges lists
-            if not nodes_lists and not edges_lists:
-                logger.warning("stage=merge_batch_empty_tuple nodes_and_edges_empty")
-                return self.graph_schema(nodes=[], edges=[])
-
-            # Guard against an empty first chunk: nodes_lists[0] (or edges_lists[0])
-            # can be an empty list when a chunk produced no nodes/edges, so
-            # indexing [0][0] without the inner check raises IndexError.
-            if nodes_lists and nodes_lists[0]:
-                assert isinstance(nodes_lists[0][0], self.node_schema), (
-                    "Invalid node list format for batch merging"
-                )
-            if edges_lists and edges_lists[0]:
-                assert isinstance(edges_lists[0][0], self.edge_schema), (
-                    "Invalid edge list format for batch merging"
-                )
-
-            all_nodes, all_edges = [], []
-            for node_list, edge_list in zip(nodes_lists, edges_lists):
-                all_nodes.extend(node_list)
-                all_edges.extend(edge_list)
-
-        merged_nodes = self.node_merger.merge(all_nodes) if all_nodes else []
-        merged_edges = self.edge_merger.merge(all_edges) if all_edges else []
-        return self.graph_schema(nodes=merged_nodes, edges=merged_edges)
-
-    # ==================== Indexing & Search ====================
-
-    def build_index(self, index_nodes: bool = True, index_edges: bool = True):
-        """Build vector index for hypergraph search.
-
-        By default, builds indices for both nodes and hyperedges to support comprehensive search.
-
-        Args:
-            index_nodes: Whether to index nodes (default: True).
-            index_edges: Whether to index hyperedges (default: True).
-        """
-        if index_nodes:
-            self.build_node_index()
-
-        if index_edges:
-            self.build_edge_index()
-
-    def build_node_index(self) -> None:
-        """Build vector index specifically for nodes."""
-        if not self.empty():
-            self._node_memory.build_index()
-
-    def build_edge_index(self) -> None:
-        """Build vector index specifically for hyperedges."""
-        if not self.empty():
-            self._edge_memory.build_index()
-
-    def search(
-        self,
-        query: str,
-        top_k_nodes: int = 3,
-        top_k_edges: int = 3,
-        top_k: int | None = None,
-        *,
-        source_ids: list[str] | None = None,
-        tags: list[str] | None = None,
-    ) -> tuple[list[NodeSchema], list[EdgeSchema]]:
-        """Unified hypergraph search interface.
-
-        Retrieves nodes and hyperedges semantically related to the query.
-
-        Args:
-            source_ids: Optional scope — only knowledge contributed by these source documents.
-            tags: Optional scope — only knowledge from sources carrying any of these tags.
-        Always returns a tuple of (nodes, edges). If a count is 0, the corresponding list will be empty.
-
-        Args:
-            query: Search query string.
-            top_k_nodes: Number of node results to return (default: 3). Set to 0 to disable node search.
-            top_k_edges: Number of hyperedge results to return (default: 3). Set to 0 to disable hyperedge search.
-            top_k: If provided, sets both top_k_nodes and top_k_edges to this value.
-
-        Returns:
-            Tuple[List[Node], List[Edge]]: A tuple containing:
-                - List of matching nodes (empty if top_k_nodes <= 0)
-                - List of matching hyperedges (empty if top_k_edges <= 0)
-
-        Raises:
-            ValueError: If both top_k_nodes and top_k_edges are <= 0.
-            ValueError: If search is requested (top_k > 0) but the corresponding index is not built.
-        """
-        if top_k is not None:
-            top_k_nodes = top_k
-            top_k_edges = top_k
-
-        if top_k_nodes <= 0 and top_k_edges <= 0:
-            raise ValueError(
-                "At least one of top_k_nodes or top_k_edges must be positive."
-            )
-
-        nodes: list[NodeSchema] = []
-        edges: list[EdgeSchema] = []
-
-        if top_k_nodes > 0:
-            if not self._node_memory.has_index():
-                raise ValueError("Node index not built. Call build_index() first.")
-            nodes = self.search_nodes(
-                query, top_k=top_k_nodes, source_ids=source_ids, tags=tags
-            )
-
-        if top_k_edges > 0:
-            if not self._edge_memory.has_index():
-                raise ValueError("Edge index not built. Call build_index() first.")
-            edges = self.search_edges(
-                query, top_k=top_k_edges, source_ids=source_ids, tags=tags
-            )
-
-        return nodes, edges
-
-    def search_nodes(
-        self,
-        query: str,
-        top_k: int = 3,
-        *,
-        source_ids: list[str] | None = None,
-        tags: list[str] | None = None,
-    ) -> list[NodeSchema]:
-        """Semantic search for nodes/entities only."""
-        return self._node_memory.search(
-            query=query, top_k=top_k, source_ids=source_ids, tags=tags
-        )
-
-    def search_edges(
-        self,
-        query: str,
-        top_k: int = 3,
-        *,
-        source_ids: list[str] | None = None,
-        tags: list[str] | None = None,
-    ) -> list[EdgeSchema]:
-        """Semantic search for hyperedges/relationships only."""
-        return self._edge_memory.search(
-            query=query, top_k=top_k, source_ids=source_ids, tags=tags
-        )
+    # merge / index / search: GraphIndexMixin
 
     def chat(
         self,
