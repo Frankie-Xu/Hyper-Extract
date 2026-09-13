@@ -141,8 +141,8 @@ def default_edge_id(
 def resolve_export_file(path: str | Path, *, overwrite: bool = False) -> Path:
     """Resolve a file-export destination, optionally refusing overwrite.
 
-    GraphML CLI does not pass ``overwrite`` yet (#123 owns ``--force``).
-    JSON-LD / Cypher can reuse this helper after those PRs land.
+    GraphML CLI ``--force`` and MCP ``overwrite`` map onto this flag.
+    JSON-LD / Cypher can reuse the same helper after those PRs land.
     """
     dest = Path(path)
     if dest.exists() and dest.is_dir():

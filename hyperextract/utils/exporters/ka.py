@@ -10,6 +10,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+from .common import resolve_export_file
 from .csv_export import export_to_csv
 from .graphml import export_to_graphml
 
@@ -37,9 +38,10 @@ def require_graph_ka(ka: Any) -> None:
     raise GraphTypeError(GRAPH_TYPE_ERROR)
 
 
-def export_ka_graphml(ka: Any, dest: str | Path) -> Path:
+def export_ka_graphml(ka: Any, dest: str | Path, *, overwrite: bool = False) -> Path:
     """Export a loaded graph-family KA to GraphML."""
     require_graph_ka(ka)
+    dest = resolve_export_file(dest, overwrite=overwrite)
     return export_to_graphml(
         ka.nodes,
         ka.edges,

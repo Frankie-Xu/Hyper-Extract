@@ -145,7 +145,7 @@ def main(
                     ),
                     (
                         "he export graphml <ka_path> -o <file>",
-                        "Export pairwise graph to GraphML",
+                        "pairwise <edge> + <hyperedge>",
                     ),
                     (
                         "he export csv <ka_path> -o <dir>",
@@ -591,6 +591,9 @@ def _load_graph_ka_for_export(ka_path: str):
 def export_graphml_cmd(
     ka_path: str = typer.Argument(..., help="Knowledge Abstract directory"),
     output: str = typer.Option(..., "--output", "-o", help="Output GraphML file"),
+    force: bool = typer.Option(
+        False, "--force", "-f", help="Overwrite an existing GraphML file"
+    ),
 ):
     """Export a knowledge graph to GraphML.
 
@@ -598,13 +601,25 @@ def export_graphml_cmd(
     or more endpoints are written as GraphML 1.0 `<hyperedge>` elements.
     """
     from hyperextract.utils.exporters import GraphMLHypergraphError
+    from hyperextract.utils.exporters.common import resolve_export_file
     from hyperextract.utils.exporters.ka import GraphTypeError, export_ka_graphml
 
     logger.info("command=export-graphml ka_path=%s output=%s", ka_path, output)
 
-    ka, _path, template = _load_graph_ka_for_export(ka_path)
-
     output_path = Path(output)
+    try:
+        resolve_export_file(output_path, overwrite=force)
+    except FileExistsError:
+        console.print(
+            "[red]Error:[/red] Output file already exists. "
+            "Use --force / -f to overwrite it."
+        )
+        raise typer.Exit(1)
+    except IsADirectoryError as e:
+        console.print(f"[red]Error:[/red] {e}")
+        raise typer.Exit(1)
+
+    ka, _path, template = _load_graph_ka_for_export(ka_path)
     console.print(f"[blue]Knowledge Abstract:[/blue] {ka_path}")
     console.print(f"[blue]Template:[/blue] {template}")
     console.print(f"[blue]Output file:[/blue] {output}")
@@ -612,12 +627,18 @@ def export_graphml_cmd(
 
     with console.status("[bold blue]Exporting to GraphML..."):
         try:
-            export_ka_graphml(ka, output_path)
+            export_ka_graphml(ka, output_path, overwrite=force)
         except GraphTypeError as e:
             console.print(f"[red]Error:[/red] {e}")
             raise typer.Exit(1)
         except GraphMLHypergraphError as e:
             console.print(f"[red]Error:[/red] {e}")
+            raise typer.Exit(1)
+        except FileExistsError:
+            console.print(
+                "[red]Error:[/red] Output file already exists. "
+                "Use --force / -f to overwrite it."
+            )
             raise typer.Exit(1)
         except Exception as e:
             console.print(f"[red]Error during export:[/red] {e}")

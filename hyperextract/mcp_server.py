@@ -221,12 +221,13 @@ def export_obsidian(
     return f"Exported {count} notes to {vault}"
 
 
-def export_graphml(ka_path: str, output: str) -> str:
+def export_graphml(ka_path: str, output: str, overwrite: bool = False) -> str:
     """Export a knowledge abstract to GraphML.
 
     Args:
         ka_path: Path to the knowledge abstract directory.
         output: Destination ``.graphml`` file.
+        overwrite: Overwrite an existing, non-empty GraphML file.
 
     Uses the same ``export_ka_graphml`` adapter as ``he export graphml``.
     Does not create, mutate, or delete the KA.
@@ -236,11 +237,13 @@ def export_graphml(ka_path: str, output: str) -> str:
 
     ka = _load_ka(ka_path)
     try:
-        dest = export_ka_graphml(ka, output)
+        dest = export_ka_graphml(ka, output, overwrite=overwrite)
     except GraphTypeError as e:
         return str(e)
     except GraphMLHypergraphError as e:
         return str(e)
+    except FileExistsError as e:
+        return f"{e} Pass overwrite=true to overwrite it."
     return f"Wrote GraphML to {dest}"
 
 

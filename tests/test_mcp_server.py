@@ -211,6 +211,19 @@ def test_export_graphml(monkeypatch, tmp_path):
     assert str(dest) in out
 
 
+def test_export_graphml_requires_overwrite(monkeypatch, tmp_path):
+    g = _graph_with_index()
+    monkeypatch.setattr(mcp_server, "_load_ka", lambda p: g)
+    dest = tmp_path / "out.graphml"
+    dest.write_text("KEEP-ME", encoding="utf-8")
+    out = mcp_server.export_graphml("x", str(dest))
+    assert "overwrite" in out.lower()
+    assert dest.read_text(encoding="utf-8") == "KEEP-ME"
+    out = mcp_server.export_graphml("x", str(dest), overwrite=True)
+    assert dest.read_text(encoding="utf-8") != "KEEP-ME"
+    assert str(dest) in out
+
+
 def test_export_csv(monkeypatch, tmp_path):
     g = _graph_with_index()
     monkeypatch.setattr(mcp_server, "_load_ka", lambda p: g)

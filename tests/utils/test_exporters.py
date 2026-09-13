@@ -393,6 +393,16 @@ class TestCommonHelpers:
             export_ka_csv(FakeListKA(), tmp_path / "csv")
         assert str(exc.value) == GRAPH_TYPE_ERROR
 
+    def test_export_ka_graphml_requires_overwrite(self, tmp_path):
+        dest = tmp_path / "g.graphml"
+        dest.write_text("KEEP", encoding="utf-8")
+        fake = FakeGraphKA([Entity(name="A")], [])
+        with pytest.raises(FileExistsError):
+            export_ka_graphml(fake, dest)
+        assert dest.read_text(encoding="utf-8") == "KEEP"
+        export_ka_graphml(fake, dest, overwrite=True)
+        assert dest.read_text(encoding="utf-8") != "KEEP"
+
 
 class TestCLIExport:
     def test_graphml_writes_directed_edge(self, tmp_path):
@@ -438,6 +448,43 @@ class TestCLIExport:
         xml = out.read_text(encoding="utf-8")
         assert "hyperedge" in xml
         assert f'xmlns="{GRAPHML_NS}"' in xml
+
+    def test_graphml_requires_force_for_existing_file(self, tmp_path):
+        ka_dir = _ka_dir(tmp_path)
+        dest = tmp_path / "out.graphml"
+        dest.write_text("KEEP-ME", encoding="utf-8")
+        fake = FakeGraphKA([Entity(name="A")], [])
+        with (
+            patch("hyperextract.cli.cli.validate_config"),
+            patch(
+                "hyperextract.cli.cli.get_template_from_ka", return_value=("t", "en")
+            ),
+            patch("hyperextract.cli.cli.Template.create", return_value=fake),
+        ):
+            result = runner.invoke(
+                app, ["export", "graphml", str(ka_dir), "-o", str(dest)]
+            )
+        assert result.exit_code != 0
+        assert "--force" in result.output or "-f" in result.output
+        assert dest.read_text(encoding="utf-8") == "KEEP-ME"
+
+    def test_graphml_force_overwrites_existing_file(self, tmp_path):
+        ka_dir = _ka_dir(tmp_path)
+        dest = tmp_path / "out.graphml"
+        dest.write_text("KEEP-ME", encoding="utf-8")
+        fake = FakeGraphKA([Entity(name="A")], [])
+        with (
+            patch("hyperextract.cli.cli.validate_config"),
+            patch(
+                "hyperextract.cli.cli.get_template_from_ka", return_value=("t", "en")
+            ),
+            patch("hyperextract.cli.cli.Template.create", return_value=fake),
+        ):
+            result = runner.invoke(
+                app, ["export", "graphml", str(ka_dir), "-o", str(dest), "--force"]
+            )
+        assert result.exit_code == 0, result.output
+        assert dest.read_text(encoding="utf-8") != "KEEP-ME"
 
     def test_csv_writes_tables(self, tmp_path):
         ka_dir = _ka_dir(tmp_path)
