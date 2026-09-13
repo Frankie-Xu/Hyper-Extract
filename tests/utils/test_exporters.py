@@ -20,6 +20,7 @@ from hyperextract.utils.exporters import (
     export_to_csv,
     export_to_graphml,
     export_to_jsonld,
+    export_to_cypher,
 )
 from hyperextract.utils.exporters.common import default_edge_id, resolve_export_file
 from hyperextract.utils.exporters.ka import (
@@ -744,3 +745,424 @@ class TestCLIExport:
         assert result.exit_code == 0, result.output
         doc = _load_jsonld(dest)
         assert any(item.get("@type") == "Node" for item in doc["@graph"])
+
+
+
+
+# ---------------------------------------------------------------------------
+# Cypher — pairwise REL, N-ary Hyperedge (no clique)
+# ---------------------------------------------------------------------------
+
+
+class TypedRel(BaseModel):
+    source: str
+    target: str
+    type: str
+
+
+class TestCypherExport:
+    def test_pairwise_uses_rel_and_direction(self, tmp_path):
+        nodes = [Entity(name="A"), Entity(name="B")]
+        edges = [Relation(source="B", target="A", relation_type="leads_to")]
+        path = export_to_cypher(
+            nodes,
+            edges,
+            node_id_extractor=lambda n: n.name,
+            incident_nodes_extractor=lambda e: (e.source, e.target),
+            file_path=tmp_path / "g.cypher",
+        )
+        text = path.read_text(encoding="utf-8")
+        assert 'MERGE (n:Node {id: "A"})' in text
+        assert 'MERGE (n:Node {id: "B"})' in text
+        assert ":REL" in text
+        assert 'id: "B"' in text
+        assert ']->(b)' in text
+        assert text.index('MERGE (a:Node {id: "B"})') < text.index(
+            'MERGE (b:Node {id: "A"})'
+        )
+
+    def test_legal_type_becomes_rel_ident(self, tmp_path):
+        nodes = [Entity(name="A"), Entity(name="B")]
+        edges = [TypedRel(source="A", target="B", type="KNOWS")]
+        path = export_to_cypher(
+            nodes,
+            edges,
+            node_id_extractor=lambda n: n.name,
+            incident_nodes_extractor=lambda e: (e.source, e.target),
+            file_path=tmp_path / "g.cypher",
+        )
+        assert ":KNOWS" in path.read_text(encoding="utf-8")
+
+    def test_nary_is_hyperedge_not_clique(self, tmp_path):
+        nodes = [Entity(name="A"), Entity(name="B"), Entity(name="C")]
+        edges = [Event(label="meeting", participants=["C", "A", "B"])]
+        path = export_to_cypher(
+            nodes,
+            edges,
+            node_id_extractor=lambda n: n.name,
+            incident_nodes_extractor=lambda e: tuple(e.participants),
+            file_path=tmp_path / "g.cypher",
+            edge_id_extractor=lambda e: e.label,
+        )
+        text = path.read_text(encoding="utf-8")
+        assert ":Hyperedge" in text
+        assert "[:IN]" in text
+        assert text.count("[:IN]") == 3
+        in_order = [
+            line
+            for line in text.splitlines()
+            if "[:IN]" in line or "MERGE (n:Node {id:" in line
+        ]
+        member_ids = [
+            line.split('id: "')[1].split('"')[0]
+            for line in in_order
+            if "MERGE (n:Node {id:" in line
+            and "Hyperedge" not in line
+            and line.split('id: "')[1].split('"')[0] in {"A", "B", "C"}
+        ]
+        # Membership MERGEs after the Hyperedge, in extractor order C, A, B
+        assert member_ids[-3:] == ["C", "A", "B"]
+        assert "-[:REL]" not in text
+        assert not any(
+            pair in text
+            for pair in (
+                '(a)-[r:REL {id: "C-A"}]',
+                '(a)-[r:REL {id: "A-B"}]',
+                '(a)-[r:REL {id: "C-B"}]',
+            )
+        )
+
+    def test_escapes_backslash_and_quote(self, tmp_path):
+        nodes = [Entity(name='say "hi"\\')]
+        path = export_to_cypher(
+            nodes,
+            [],
+            node_id_extractor=lambda n: n.name,
+            incident_nodes_extractor=lambda e: (),
+            file_path=tmp_path / "g.cypher",
+        )
+        text = path.read_text(encoding="utf-8")
+        assert r"say \"hi\"\\" in text
+
+
+# ---------------------------------------------------------------------------
+# CSV — round-trip, quoting, direction, dangling, hypergraph
+# ---------------------------------------------------------------------------
+
+
+class TestCSVPairwise:
+    def test_round_trip_and_quoting(self, tmp_path):
+        nodes = [
+            Entity(name="Apple, Inc.", type="ORG", note='He said "hi"'),
+            Entity(name="Jobs", type="PERSON", note="line1\nline2"),
+        ]
+        edges = [
+            Relation(
+                source="Apple, Inc.",
+                target="Jobs",
+                relation_type="founded_by",
+                description="a, b",
+            )
+        ]
+        folder = _export_csv(tmp_path / "csv", nodes, edges)
+
+        with (folder / "nodes.csv").open(encoding="utf-8", newline="") as handle:
+            node_rows = list(csv.DictReader(handle))
+        with (folder / "edges.csv").open(encoding="utf-8", newline="") as handle:
+            edge_rows = list(csv.DictReader(handle))
+
+        assert [row["id"] for row in node_rows] == ["Apple, Inc.", "Jobs"]
+        assert node_rows[0]["name"] == "Apple, Inc."
+        assert node_rows[0]["note"] == 'He said "hi"'
+        assert node_rows[1]["note"] == "line1\nline2"
+
+        assert edge_rows[0]["source"] == "Apple, Inc."
+        assert edge_rows[0]["target"] == "Jobs"
+        assert edge_rows[0]["description"] == "a, b"
+        header = (folder / "nodes.csv").read_text(encoding="utf-8").splitlines()[0]
+        assert header.startswith("id,")
+
+    def test_preserves_direction_b_to_a(self, tmp_path):
+        nodes = [Entity(name="A"), Entity(name="B")]
+        edges = [Relation(source="B", target="A", relation_type="leads_to")]
+        folder = _export_csv(tmp_path / "csv", nodes, edges)
+        with (folder / "edges.csv").open(encoding="utf-8", newline="") as handle:
+            rows = list(csv.DictReader(handle))
+        assert rows[0]["source"] == "B"
+        assert rows[0]["target"] == "A"
+
+    def test_missing_endpoint_is_skipped(self, tmp_path):
+        nodes = [Entity(name="Apple")]
+        edges = [Relation(source="Apple", target="Ghost", relation_type="x")]
+        folder = _export_csv(tmp_path / "csv", nodes, edges)
+        with (folder / "edges.csv").open(encoding="utf-8", newline="") as handle:
+            rows = list(csv.DictReader(handle))
+        assert rows == []
+        with (folder / "nodes.csv").open(encoding="utf-8", newline="") as handle:
+            assert [r["id"] for r in csv.DictReader(handle)] == ["Apple"]
+
+    def test_raises_on_nonempty_dir(self, tmp_path):
+        dest = tmp_path / "csv"
+        dest.mkdir()
+        (dest / "keep.txt").write_text("keep", encoding="utf-8")
+        with pytest.raises(FileExistsError):
+            _export_csv(dest, [Entity(name="Apple")], [])
+
+    def test_overwrite_allows_nonempty_dir(self, tmp_path):
+        dest = tmp_path / "csv"
+        dest.mkdir()
+        (dest / "keep.txt").write_text("keep", encoding="utf-8")
+        _export_csv(dest, [Entity(name="Apple")], [], overwrite=True)
+        assert (dest / "nodes.csv").exists()
+        assert (dest / "keep.txt").exists()
+
+
+class TestCSVHypergraph:
+    def test_members_sorted_stable_delimiter(self, tmp_path):
+        nodes = [Entity(name="A"), Entity(name="B"), Entity(name="C")]
+        edges = [Event(label="meeting", participants=["C", "A", "B"])]
+        folder = export_to_csv(
+            nodes,
+            edges,
+            node_id_extractor=lambda n: n.name,
+            incident_nodes_extractor=lambda e: tuple(e.participants),
+            folder_path=tmp_path / "csv",
+            edge_id_extractor=lambda e: e.label,
+            hypergraph=True,
+        )
+        assert (folder / "hyperedges.csv").exists()
+        assert not (folder / "edges.csv").exists()
+        with (folder / "hyperedges.csv").open(encoding="utf-8", newline="") as handle:
+            rows = list(csv.DictReader(handle))
+        assert rows[0]["id"] == "meeting"
+        assert rows[0]["members"] == HYPEREDGE_MEMBER_SEP.join(["A", "B", "C"])
+        assert rows[0]["label"] == "meeting"
+
+
+# ---------------------------------------------------------------------------
+# CLI
+# ---------------------------------------------------------------------------
+
+
+class FakeGraphKA:
+    def __init__(self, nodes, edges, hypergraph=False):
+        self.nodes = nodes
+        self.edges = edges
+        self.node_key_extractor = lambda n: n.name
+        if hypergraph:
+            self.nodes_in_edge_extractor = lambda e: tuple(e.participants)
+            self.edge_key_extractor = lambda e: e.label
+            self.metadata = {"type": "hypergraph"}
+        else:
+            self.nodes_in_edge_extractor = lambda e: (e.source, e.target)
+            self.edge_key_extractor = lambda e: (
+                f"{e.source}-{e.relation_type}-{e.target}"
+            )
+            self.metadata = {"type": "graph"}
+
+    def export_obsidian(self, *args, **kwargs):
+        return None
+
+    def load(self, path):
+        return None
+
+
+class FakeListKA:
+    def load(self, path):
+        return None
+
+
+def _ka_dir(tmp_path):
+    ka = tmp_path / "ka"
+    ka.mkdir()
+    (ka / "data.json").write_text(
+        json.dumps({"nodes": [], "edges": []}), encoding="utf-8"
+    )
+    (ka / "metadata.json").write_text(
+        json.dumps({"template": "general/biography_graph", "lang": "en"}),
+        encoding="utf-8",
+    )
+    return ka
+
+
+class TestCLIExport:
+    def test_graphml_writes_directed_edge(self, tmp_path):
+        ka_dir = _ka_dir(tmp_path)
+        fake = FakeGraphKA(
+            [Entity(name="A"), Entity(name="B")],
+            [Relation(source="B", target="A", relation_type="leads_to")],
+        )
+        out = tmp_path / "out.graphml"
+        with (
+            patch("hyperextract.cli.cli.validate_config"),
+            patch(
+                "hyperextract.cli.cli.get_template_from_ka", return_value=("t", "en")
+            ),
+            patch("hyperextract.cli.cli.Template.create", return_value=fake),
+        ):
+            result = runner.invoke(
+                app, ["export", "graphml", str(ka_dir), "-o", str(out)]
+            )
+        assert result.exit_code == 0, result.output
+        _root, graph, ns = _parse_graphml(out)
+        assert _edge_endpoints(graph, ns) == [("B", "A")]
+
+    def test_graphml_exports_hypergraph(self, tmp_path):
+        ka_dir = _ka_dir(tmp_path)
+        fake = FakeGraphKA(
+            [Entity(name="A"), Entity(name="B"), Entity(name="C")],
+            [Event(label="meeting", participants=["A", "B", "C"])],
+            hypergraph=True,
+        )
+        out = tmp_path / "out.graphml"
+        with (
+            patch("hyperextract.cli.cli.validate_config"),
+            patch(
+                "hyperextract.cli.cli.get_template_from_ka", return_value=("t", "en")
+            ),
+            patch("hyperextract.cli.cli.Template.create", return_value=fake),
+        ):
+            result = runner.invoke(
+                app, ["export", "graphml", str(ka_dir), "-o", str(out)]
+            )
+        assert result.exit_code == 0, result.output
+        xml = out.read_text(encoding="utf-8")
+        assert "hyperedge" in xml
+        assert f'xmlns="{GRAPHML_NS}"' in xml
+
+    def test_csv_writes_tables(self, tmp_path):
+        ka_dir = _ka_dir(tmp_path)
+        fake = FakeGraphKA(
+            [Entity(name="A"), Entity(name="B")],
+            [Relation(source="B", target="A", relation_type="leads_to")],
+        )
+        out = tmp_path / "csv_out"
+        with (
+            patch("hyperextract.cli.cli.validate_config"),
+            patch(
+                "hyperextract.cli.cli.get_template_from_ka", return_value=("t", "en")
+            ),
+            patch("hyperextract.cli.cli.Template.create", return_value=fake),
+        ):
+            result = runner.invoke(app, ["export", "csv", str(ka_dir), "-o", str(out)])
+        assert result.exit_code == 0, result.output
+        with (out / "edges.csv").open(encoding="utf-8", newline="") as handle:
+            rows = list(csv.DictReader(handle))
+        assert rows[0]["source"] == "B"
+        assert rows[0]["target"] == "A"
+
+    def test_csv_hypergraph_writes_hyperedges(self, tmp_path):
+        ka_dir = _ka_dir(tmp_path)
+        fake = FakeGraphKA(
+            [Entity(name="A"), Entity(name="B"), Entity(name="C")],
+            [Event(label="meeting", participants=["C", "A", "B"])],
+            hypergraph=True,
+        )
+        out = tmp_path / "csv_out"
+        with (
+            patch("hyperextract.cli.cli.validate_config"),
+            patch(
+                "hyperextract.cli.cli.get_template_from_ka", return_value=("t", "en")
+            ),
+            patch("hyperextract.cli.cli.Template.create", return_value=fake),
+        ):
+            result = runner.invoke(app, ["export", "csv", str(ka_dir), "-o", str(out)])
+        assert result.exit_code == 0, result.output
+        assert (out / "hyperedges.csv").exists()
+        assert not (out / "edges.csv").exists()
+
+    def test_csv_requires_force_for_nonempty_dir(self, tmp_path):
+        ka_dir = _ka_dir(tmp_path)
+        dest = tmp_path / "csv_out"
+        dest.mkdir()
+        (dest / "existing.txt").write_text("x", encoding="utf-8")
+        fake = FakeGraphKA([Entity(name="A")], [])
+        with (
+            patch("hyperextract.cli.cli.validate_config"),
+            patch(
+                "hyperextract.cli.cli.get_template_from_ka", return_value=("t", "en")
+            ),
+            patch("hyperextract.cli.cli.Template.create", return_value=fake),
+        ):
+            result = runner.invoke(app, ["export", "csv", str(ka_dir), "-o", str(dest)])
+        assert result.exit_code == 1
+        assert "--force" in result.output or "not empty" in result.output
+
+    def test_csv_force_writes_nonempty_dir(self, tmp_path):
+        ka_dir = _ka_dir(tmp_path)
+        dest = tmp_path / "csv_out"
+        dest.mkdir()
+        (dest / "existing.txt").write_text("x", encoding="utf-8")
+        fake = FakeGraphKA([Entity(name="A")], [])
+        with (
+            patch("hyperextract.cli.cli.validate_config"),
+            patch(
+                "hyperextract.cli.cli.get_template_from_ka", return_value=("t", "en")
+            ),
+            patch("hyperextract.cli.cli.Template.create", return_value=fake),
+        ):
+            result = runner.invoke(
+                app, ["export", "csv", str(ka_dir), "-o", str(dest), "--force"]
+            )
+        assert result.exit_code == 0, result.output
+        assert (dest / "nodes.csv").exists()
+
+    def test_rejects_non_graph_ka(self, tmp_path):
+        ka_dir = _ka_dir(tmp_path)
+        fake = FakeListKA()
+        with (
+            patch("hyperextract.cli.cli.validate_config"),
+            patch(
+                "hyperextract.cli.cli.get_template_from_ka", return_value=("t", "en")
+            ),
+            patch("hyperextract.cli.cli.Template.create", return_value=fake),
+        ):
+            result = runner.invoke(
+                app,
+                ["export", "graphml", str(ka_dir), "-o", str(tmp_path / "g.graphml")],
+            )
+        assert result.exit_code == 1
+        assert "graph" in result.output.lower()
+
+    def test_cypher_writes_hyperedge_membership(self, tmp_path):
+        ka_dir = _ka_dir(tmp_path)
+        fake = FakeGraphKA(
+            [Entity(name="A"), Entity(name="B"), Entity(name="C")],
+            [Event(label="meeting", participants=["C", "A", "B"])],
+            hypergraph=True,
+        )
+        out = tmp_path / "out.cypher"
+        with (
+            patch("hyperextract.cli.cli.validate_config"),
+            patch(
+                "hyperextract.cli.cli.get_template_from_ka", return_value=("t", "en")
+            ),
+            patch("hyperextract.cli.cli.Template.create", return_value=fake),
+        ):
+            result = runner.invoke(
+                app, ["export", "cypher", str(ka_dir), "-o", str(out)]
+            )
+        assert result.exit_code == 0, result.output
+        text = out.read_text(encoding="utf-8")
+        assert ":Hyperedge" in text
+        assert "[:IN]" in text
+        assert "-[:REL]->" not in text
+
+    def test_cypher_requires_force_for_existing_file(self, tmp_path):
+        ka_dir = _ka_dir(tmp_path)
+        dest = tmp_path / "out.cypher"
+        dest.write_text("SENTINEL", encoding="utf-8")
+        fake = FakeGraphKA([Entity(name="A")], [])
+        with (
+            patch("hyperextract.cli.cli.validate_config"),
+            patch(
+                "hyperextract.cli.cli.get_template_from_ka", return_value=("t", "en")
+            ),
+            patch("hyperextract.cli.cli.Template.create", return_value=fake),
+        ):
+            result = runner.invoke(
+                app, ["export", "cypher", str(ka_dir), "-o", str(dest)]
+            )
+        assert result.exit_code != 0
+        assert "--force" in result.output or "-f" in result.output
+        assert dest.read_text(encoding="utf-8") == "SENTINEL"

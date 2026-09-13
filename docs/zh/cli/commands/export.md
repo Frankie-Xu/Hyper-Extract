@@ -3,6 +3,7 @@
 将知识摘要导出为 [Obsidian](https://obsidian.md) 知识库——一个由 `[[双向链接]]` 关联的 Markdown 笔记文件夹。
 
 `export` 是一个命令组。目前支持的格式：`obsidian`、`graphml`、`jsonld`、`csv`。
+`export` 是一个命令组。目前支持的格式：`obsidian`、`graphml`、`cypher`、`csv`。
 
 ---
 
@@ -170,6 +171,9 @@ he export graphml ./tesla_kb/ -o ./tesla.graphml
 ## he export jsonld
 
 将知识图谱导出为 JSON-LD（标准库 `json`，不引入 RDFLib）。二元边为 `@type: Edge`，带 `source` / `target`。三个及以上端点的边为 `@type: Hyperedge`，`endpoint` 列表保持抽取器顺序（不排序）。0/1 个端点或缺失端点的边会跳过并记 warning，与 GraphML 一致。
+## he export cypher
+
+导出 Neo4j / Memgraph 可用的 Cypher MERGE 脚本（`cypher-shell < file.cypher`）。二元边写成关系（`:REL`，或合法的 `type`/`label` ident）。三个及以上端点的边写成 `(:Hyperedge)` 节点，并用 `(n)-[:IN]->(h)` 按抽取器顺序连接——不会拆成两两团。0/1 个端点或缺失端点的边会跳过并记 warning。
 
 目标文件已存在且非空时需要 `--force` / `-f`。
 
@@ -191,6 +195,14 @@ he export jsonld KA_PATH -o FILE.jsonld [--force]
 ```bash
 he export jsonld ./tesla_kb/ -o ./tesla.jsonld
 he export jsonld ./tesla_kb/ -o ./tesla.jsonld --force
+he export cypher KA_PATH -o FILE.cypher [--force]
+```
+
+### 示例
+
+```bash
+he export cypher ./tesla_kb/ -o ./tesla.cypher
+he export cypher ./tesla_kb/ -o ./tesla.cypher --force
 ```
 
 ---
@@ -250,7 +262,12 @@ Obsidian 导出是图谱 Auto-Type 上的方法；GraphML / CSV / JSON-LD 是独
 ```python
 ka.export_obsidian("./tesla_vault/", vault_name="Tesla KB", overwrite=True)
 
-from hyperextract.utils.exporters import export_to_graphml, export_to_csv, export_to_jsonld
+from hyperextract.utils.exporters import (
+    export_to_graphml,
+    export_to_csv,
+    export_to_jsonld,
+    export_to_cypher,
+)
 
 export_to_graphml(
     ka.nodes,
@@ -270,11 +287,13 @@ export_to_csv(
 )
 
 export_to_jsonld(
+export_to_cypher(
     ka.nodes,
     ka.edges,
     node_id_extractor=ka.node_key_extractor,
     incident_nodes_extractor=ka.nodes_in_edge_extractor,
     file_path="./tesla.jsonld",
+    file_path="./tesla.cypher",
 )
 ```
 

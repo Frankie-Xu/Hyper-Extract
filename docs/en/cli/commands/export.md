@@ -2,7 +2,7 @@
 
 Export a knowledge abstract to an [Obsidian](https://obsidian.md) vault — a folder of Markdown notes linked by `[[wikilinks]]`.
 
-`export` is a command group. Formats: `obsidian`, `graphml`, `jsonld`, `csv`.
+`export` is a command group. Formats: `obsidian`, `graphml`, `jsonld`, `cypher`, `csv`.
 
 ---
 
@@ -170,6 +170,9 @@ he export graphml ./tesla_kb/ -o ./tesla.graphml
 ## he export jsonld
 
 Export a knowledge graph to JSON-LD (stdlib `json`, no RDFLib). Binary edges are `@type: Edge` with `source` / `target`. Edges with three or more endpoints are `@type: Hyperedge` with an `endpoint` list in extractor order (never sorted). 0/1-endpoint or missing-endpoint edges are skipped with a warning, same as GraphML.
+## he export cypher
+
+Export a Neo4j / Memgraph-compatible Cypher MERGE script (`cypher-shell < file.cypher`). Binary edges become relationships (`:REL`, or a legal `type`/`label` ident). Edges with three or more endpoints become `(:Hyperedge)` nodes plus `(n)-[:IN]->(h)` in extractor order — never a pairwise clique. 0/1-endpoint or missing-endpoint edges are skipped with a warning.
 
 Existing non-empty output files require `--force` / `-f`.
 
@@ -191,6 +194,14 @@ he export jsonld KA_PATH -o FILE.jsonld [--force]
 ```bash
 he export jsonld ./tesla_kb/ -o ./tesla.jsonld
 he export jsonld ./tesla_kb/ -o ./tesla.jsonld --force
+he export cypher KA_PATH -o FILE.cypher [--force]
+```
+
+### Examples
+
+```bash
+he export cypher ./tesla_kb/ -o ./tesla.cypher
+he export cypher ./tesla_kb/ -o ./tesla.cypher --force
 ```
 
 ---
@@ -250,7 +261,12 @@ The same capability is available on graph Auto-Types for Obsidian, and as standa
 ```python
 ka.export_obsidian("./tesla_vault/", vault_name="Tesla KB", overwrite=True)
 
-from hyperextract.utils.exporters import export_to_graphml, export_to_csv, export_to_jsonld
+from hyperextract.utils.exporters import (
+    export_to_graphml,
+    export_to_csv,
+    export_to_jsonld,
+    export_to_cypher,
+)
 
 export_to_graphml(
     ka.nodes,
@@ -270,11 +286,13 @@ export_to_csv(
 )
 
 export_to_jsonld(
+export_to_cypher(
     ka.nodes,
     ka.edges,
     node_id_extractor=ka.node_key_extractor,
     incident_nodes_extractor=ka.nodes_in_edge_extractor,
     file_path="./tesla.jsonld",
+    file_path="./tesla.cypher",
 )
 ```
 

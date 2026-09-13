@@ -704,6 +704,62 @@ def export_jsonld_cmd(
     console.print(f"[bold green]Success![/bold green] Wrote JSON-LD to {output_path}")
 
 
+@export_app.command(name="cypher")
+def export_cypher_cmd(
+    ka_path: str = typer.Argument(..., help="Knowledge Abstract directory"),
+    output: str = typer.Option(..., "--output", "-o", help="Output Cypher file"),
+    force: bool = typer.Option(
+        False, "--force", "-f", help="Overwrite an existing Cypher file"
+    ),
+):
+    """Export a knowledge graph to a Neo4j-compatible Cypher MERGE script.
+
+    Binary edges become relationships. N-ary edges become Hyperedge nodes
+    with IN membership (not a pairwise clique).
+    """
+    from hyperextract.utils.exporters import export_to_cypher
+
+    logger.info("command=export-cypher ka_path=%s output=%s", ka_path, output)
+
+    output_path = Path(output)
+    existing_nonempty = (
+        output_path.exists()
+        and output_path.is_file()
+        and output_path.stat().st_size > 0
+    )
+    if existing_nonempty and not force:
+        console.print(
+            "[red]Error:[/red] Output file already exists. "
+            "Use --force / -f to overwrite it."
+        )
+        raise typer.Exit(1)
+
+    ka, _path, template = _load_graph_ka_for_export(ka_path)
+    console.print(f"[blue]Knowledge Abstract:[/blue] {ka_path}")
+    console.print(f"[blue]Template:[/blue] {template}")
+    console.print(f"[blue]Output file:[/blue] {output}")
+    console.print()
+
+    with console.status("[bold blue]Exporting to Cypher..."):
+        try:
+            export_to_cypher(
+                ka.nodes,
+                ka.edges,
+                node_id_extractor=ka.node_key_extractor,
+                incident_nodes_extractor=ka.nodes_in_edge_extractor,
+                file_path=output_path,
+                edge_id_extractor=getattr(ka, "edge_key_extractor", None),
+            )
+        except Exception as e:
+            console.print(f"[red]Error during export:[/red] {e}")
+            raise typer.Exit(1)
+
+    console.print()
+    console.print(f"[bold green]Success![/bold green] Wrote Cypher to {output_path}")
+    console.print()
+    console.print("[dim]Load with cypher-shell < file.cypher (Neo4j / Memgraph).[/dim]")
+
+
 @export_app.command(name="csv")
 def export_csv_cmd(
     ka_path: str = typer.Argument(..., help="Knowledge Abstract directory"),

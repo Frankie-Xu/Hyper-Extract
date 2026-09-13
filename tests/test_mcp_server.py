@@ -300,8 +300,8 @@ def test_export_graphml_rejects_non_graph(monkeypatch, tmp_path):
     monkeypatch.setattr(mcp_server, "_load_ka", lambda p: _ListKA())
     out = mcp_server.export_graphml("x", str(tmp_path / "out.graphml"))
     assert out == (
-        "GraphML/CSV export is only supported for graph-type knowledge abstracts "
-        "(graph, hypergraph, temporal/spatial graphs)."
+        "Graph export (GraphML/CSV/JSON-LD) is only supported for graph-type "
+        "knowledge abstracts (graph, hypergraph, temporal/spatial graphs)."
     )
 
 
