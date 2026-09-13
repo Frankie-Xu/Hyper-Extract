@@ -152,8 +152,7 @@ def resolve_export_file(path: str | Path, *, overwrite: bool = False) -> Path:
     existing_nonempty = dest.exists() and dest.is_file() and dest.stat().st_size > 0
     if existing_nonempty and not overwrite:
         raise FileExistsError(
-            f"Destination '{dest}' already exists. "
-            "Pass overwrite=True to overwrite it."
+            f"Destination '{dest}' already exists. Pass overwrite=True to overwrite it."
         )
     dest.parent.mkdir(parents=True, exist_ok=True)
     return dest

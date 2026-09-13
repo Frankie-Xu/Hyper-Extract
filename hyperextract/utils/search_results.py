@@ -72,7 +72,5 @@ def coerce_search_results(results: Any) -> SearchHits:
             payload["community_context"] = dump_search_value(results[2])
         return SearchHits(kind="graph", payload=payload)
     if isinstance(results, list):
-        return SearchHits(
-            kind="list", payload={"results": dump_search_value(results)}
-        )
+        return SearchHits(kind="list", payload={"results": dump_search_value(results)})
     return SearchHits(kind="list", payload={"results": [dump_search_value(results)]})
