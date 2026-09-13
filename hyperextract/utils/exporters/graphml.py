@@ -18,6 +18,7 @@ from pydantic import BaseModel
 from hyperextract.utils.logging import get_logger
 
 from .common import (
+    default_edge_id,
     graphml_attr_type,
     graphml_attr_value,
     incident_ids,
@@ -112,7 +113,7 @@ def export_to_graphml(
                     target,
                 )
                 continue
-            edge_id = _edge_id(edge, index, edge_id_extractor)
+            edge_id = default_edge_id(edge, index, edge_id_extractor)
             fields = scalar_fields(edge)
             for name, value in fields.items():
                 edge_keys[name] = merge_graphml_type(
@@ -129,7 +130,7 @@ def export_to_graphml(
                     missing,
                 )
                 continue
-            edge_id = _edge_id(edge, index, edge_id_extractor)
+            edge_id = default_edge_id(edge, index, edge_id_extractor)
             fields = scalar_fields(edge)
             for name, value in fields.items():
                 hyperedge_keys[name] = merge_graphml_type(
@@ -157,19 +158,6 @@ def export_to_graphml(
         dest,
     )
     return dest
-
-
-def _edge_id(edge: Any, index: int, extractor: Callable[[Any], str] | None) -> str:
-    if extractor is None:
-        return f"e{index}"
-    try:
-        value = extractor(edge)
-    except Exception as exc:
-        logger.debug("export.graphml: edge_id_extractor raised %s", exc)
-        return f"e{index}"
-    if value in (None, ""):
-        return f"e{index}"
-    return str(value)
 
 
 def _key_id(prefix: str, name: str) -> str:

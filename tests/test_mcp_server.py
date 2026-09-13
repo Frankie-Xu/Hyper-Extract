@@ -95,6 +95,61 @@ def test_search_returns_nodes_and_edges(monkeypatch):
     assert isinstance(out["nodes"], list)
 
 
+def test_search_graph_rag_triple_includes_community_context(monkeypatch):
+    class _TripleKA:
+        def search(self, query, top_k=5):
+            return (
+                [Entity(name="Alice")],
+                [Relation(source="Alice", target="Bob", relation_type="knows")],
+                {"summary": "cluster"},
+            )
+
+    monkeypatch.setattr(mcp_server, "_load_ka", lambda p: _TripleKA())
+    out = json.loads(mcp_server.search("x", "query"))
+    assert "nodes" in out and "edges" in out
+    assert out["community_context"] == {"summary": "cluster"}
+    assert out["nodes"][0]["name"] == "Alice"
+
+
+def test_search_graph_rag_triple_writes_null_community(monkeypatch):
+    class _TripleKA:
+        def search(self, query, top_k=5):
+            return ([], [], None)
+
+    monkeypatch.setattr(mcp_server, "_load_ka", lambda p: _TripleKA())
+    out = json.loads(mcp_server.search("x", "query"))
+    assert out["nodes"] == []
+    assert out["edges"] == []
+    assert out["community_context"] is None
+
+
+def test_search_list_wraps_results(monkeypatch):
+    class _ListKA:
+        def search(self, query, top_k=5):
+            return [Entity(name="Alice"), Entity(name="Bob")]
+
+    monkeypatch.setattr(mcp_server, "_load_ka", lambda p: _ListKA())
+    out = json.loads(mcp_server.search("x", "query"))
+    assert "results" in out
+    assert [item["name"] for item in out["results"]] == ["Alice", "Bob"]
+
+
+def test_search_dict_recursively_dumps_models(monkeypatch):
+    class _DictKA:
+        def search(self, query, top_k=5):
+            return {
+                "themes": [Entity(name="power")],
+                "entities": [Entity(name="Tesla")],
+                "nested": {"inner": [Entity(name="nested")]},
+            }
+
+    monkeypatch.setattr(mcp_server, "_load_ka", lambda p: _DictKA())
+    out = json.loads(mcp_server.search("x", "query"))
+    assert out["themes"][0]["name"] == "power"
+    assert out["entities"][0]["name"] == "Tesla"
+    assert out["nested"]["inner"][0]["name"] == "nested"
+
+
 def test_search_without_index_is_handled(monkeypatch):
     g = AutoGraph(
         node_schema=Entity,
@@ -164,6 +219,29 @@ def test_export_csv(monkeypatch, tmp_path):
     assert (dest / "nodes.csv").exists()
     assert (dest / "edges.csv").exists()
     assert "nodes.csv + edges.csv" in out
+
+
+def test_export_graphml_rejects_non_graph(monkeypatch, tmp_path):
+    class _ListKA:
+        pass
+
+    monkeypatch.setattr(mcp_server, "_load_ka", lambda p: _ListKA())
+    out = mcp_server.export_graphml("x", str(tmp_path / "out.graphml"))
+    assert out == (
+        "GraphML/CSV export is only supported for graph-type knowledge abstracts "
+        "(graph, hypergraph, temporal/spatial graphs)."
+    )
+
+
+def test_export_csv_rejects_non_graph_with_same_message(monkeypatch, tmp_path):
+    class _ListKA:
+        pass
+
+    monkeypatch.setattr(mcp_server, "_load_ka", lambda p: _ListKA())
+    graphml = mcp_server.export_graphml("x", str(tmp_path / "out.graphml"))
+    csv_out = mcp_server.export_csv("x", str(tmp_path / "csv"))
+    assert graphml == csv_out
+    assert "graph-type knowledge abstracts" in graphml
 
 
 # ---------------------------------------------------------------------------

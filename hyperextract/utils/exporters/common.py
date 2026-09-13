@@ -6,6 +6,7 @@ import AutoType classes.
 """
 
 from collections.abc import Callable, Sequence
+from pathlib import Path
 from typing import Any
 
 from pydantic import BaseModel
@@ -119,3 +120,40 @@ def incident_ids(
     if isinstance(raw, (list, tuple, set)):
         return [str(item) for item in raw if item is not None]
     return [str(raw)]
+
+
+def default_edge_id(
+    edge: Any, index: int, extractor: Callable[[Any], str] | None
+) -> str:
+    """Return an edge id from ``extractor``, falling back to ``e{index}``."""
+    if extractor is None:
+        return f"e{index}"
+    try:
+        value = extractor(edge)
+    except Exception as exc:
+        logger.debug("export: edge_id_extractor raised %s", exc)
+        return f"e{index}"
+    if value in (None, ""):
+        return f"e{index}"
+    return str(value)
+
+
+def resolve_export_file(path: str | Path, *, overwrite: bool = False) -> Path:
+    """Resolve a file-export destination, optionally refusing overwrite.
+
+    GraphML CLI does not pass ``overwrite`` yet (#123 owns ``--force``).
+    JSON-LD / Cypher can reuse this helper after those PRs land.
+    """
+    dest = Path(path)
+    if dest.exists() and dest.is_dir():
+        raise IsADirectoryError(
+            f"Destination '{dest}' is a directory; pass a file path."
+        )
+    existing_nonempty = dest.exists() and dest.is_file() and dest.stat().st_size > 0
+    if existing_nonempty and not overwrite:
+        raise FileExistsError(
+            f"Destination '{dest}' already exists. "
+            "Pass overwrite=True to overwrite it."
+        )
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    return dest

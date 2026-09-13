@@ -20,6 +20,13 @@ from hyperextract.utils.exporters import (
     export_to_csv,
     export_to_graphml,
 )
+from hyperextract.utils.exporters.common import default_edge_id, resolve_export_file
+from hyperextract.utils.exporters.ka import (
+    GRAPH_TYPE_ERROR,
+    GraphTypeError,
+    export_ka_csv,
+    export_ka_graphml,
+)
 from hyperextract.utils.exporters.graphml import GRAPHML_NS
 
 runner = CliRunner()
@@ -344,6 +351,47 @@ def _ka_dir(tmp_path):
         encoding="utf-8",
     )
     return ka
+
+
+class TestCommonHelpers:
+    def test_default_edge_id_falls_back(self):
+        def _boom(_edge):
+            raise ValueError("no id")
+
+        assert default_edge_id(object(), 3, None) == "e3"
+        assert default_edge_id(object(), 1, lambda e: None) == "e1"
+        assert default_edge_id(object(), 1, lambda e: "") == "e1"
+        assert default_edge_id(object(), 1, _boom) == "e1"
+        assert default_edge_id(object(), 1, lambda e: "rel") == "rel"
+
+    def test_resolve_export_file_refuses_nonempty_without_overwrite(self, tmp_path):
+        dest = tmp_path / "out.graphml"
+        dest.write_text("KEEP", encoding="utf-8")
+        with pytest.raises(FileExistsError):
+            resolve_export_file(dest, overwrite=False)
+        assert dest.read_text(encoding="utf-8") == "KEEP"
+        resolved = resolve_export_file(dest, overwrite=True)
+        assert resolved == dest
+
+    def test_export_ka_graphml_and_csv_match_encoders(self, tmp_path):
+        fake = FakeGraphKA(
+            [Entity(name="A"), Entity(name="B")],
+            [Relation(source="B", target="A", relation_type="leads_to")],
+        )
+        path = export_ka_graphml(fake, tmp_path / "g.graphml")
+        _root, graph, ns = _parse_graphml(path)
+        assert _edge_endpoints(graph, ns) == [("B", "A")]
+        folder = export_ka_csv(fake, tmp_path / "csv")
+        with (folder / "edges.csv").open(encoding="utf-8", newline="") as handle:
+            rows = list(csv.DictReader(handle))
+        assert rows[0]["source"] == "B"
+
+    def test_export_ka_rejects_non_graph(self, tmp_path):
+        with pytest.raises(GraphTypeError, match="graph-type"):
+            export_ka_graphml(FakeListKA(), tmp_path / "g.graphml")
+        with pytest.raises(GraphTypeError) as exc:
+            export_ka_csv(FakeListKA(), tmp_path / "csv")
+        assert str(exc.value) == GRAPH_TYPE_ERROR
 
 
 class TestCLIExport:
