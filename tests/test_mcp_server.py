@@ -367,8 +367,43 @@ def test_export_cypher_requires_overwrite(monkeypatch, tmp_path):
     assert "overwrite" in out.lower()
     assert dest.read_text(encoding="utf-8") == "KEEP-ME"
     out = mcp_server.export_cypher("x", str(dest), overwrite=True)
+
+
+def test_export_jsonld(monkeypatch, tmp_path):
+    g = _graph_with_index()
+    monkeypatch.setattr(mcp_server, "_load_ka", lambda p: g)
+    dest = tmp_path / "out.jsonld"
+    out = mcp_server.export_jsonld("x", str(dest))
+    assert dest.exists()
+    doc = json.loads(dest.read_text(encoding="utf-8"))
+    assert any(item.get("@type") == "Edge" for item in doc["@graph"])
+    assert str(dest) in out
+
+
+def test_export_jsonld_requires_overwrite(monkeypatch, tmp_path):
+    g = _graph_with_index()
+    monkeypatch.setattr(mcp_server, "_load_ka", lambda p: g)
+    dest = tmp_path / "out.jsonld"
+    dest.write_text("KEEP-ME", encoding="utf-8")
+    out = mcp_server.export_jsonld("x", str(dest))
+    assert "overwrite" in out.lower()
+    assert dest.read_text(encoding="utf-8") == "KEEP-ME"
+    out = mcp_server.export_jsonld("x", str(dest), overwrite=True)
     assert dest.read_text(encoding="utf-8") != "KEEP-ME"
     assert str(dest) in out
+
+
+def test_export_jsonld_rejects_non_graph(monkeypatch, tmp_path):
+    class _ListKA:
+        pass
+
+    monkeypatch.setattr(mcp_server, "_load_ka", lambda p: _ListKA())
+    out = mcp_server.export_jsonld("x", str(tmp_path / "out.jsonld"))
+    assert out == (
+        "Graph export (GraphML/CSV/JSON-LD/Cypher) is only supported for graph-type "
+        "knowledge abstracts (graph, hypergraph, temporal/spatial graphs)."
+    )
+    assert "JSON-LD" in out
 
 
 def test_export_cypher_rejects_non_graph(monkeypatch, tmp_path):

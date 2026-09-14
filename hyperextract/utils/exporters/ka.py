@@ -1,7 +1,8 @@
-"""KA-level adapters for GraphML, CSV, and Cypher export.
+"""KA-level adapters for GraphML, CSV, JSON-LD, and Cypher export.
 
-CLI ``he export graphml/csv/cypher`` and MCP ``export_graphml`` /
-``export_csv`` / ``export_cypher`` call these functions so extractor
+CLI ``he export graphml/csv/jsonld/cypher`` and MCP ``export_graphml`` /
+``export_csv`` / ``export_jsonld`` / ``export_cypher`` call these functions
+so extractor
 wiring and the graph-type check live in one place. Encoders stay pure
 functions over node/edge models.
 """
@@ -15,6 +16,7 @@ from .common import resolve_export_file
 from .csv_export import export_to_csv
 from .cypher import export_to_cypher
 from .graphml import export_to_graphml
+from .jsonld import export_to_jsonld
 
 GRAPH_TYPE_ERROR = (
     "Graph export (GraphML/CSV/JSON-LD/Cypher) is only supported for graph-type "
@@ -74,6 +76,20 @@ def export_ka_cypher(ka: Any, dest: str | Path, *, overwrite: bool = False) -> P
     require_graph_ka(ka)
     dest = resolve_export_file(dest, overwrite=overwrite)
     return export_to_cypher(
+        ka.nodes,
+        ka.edges,
+        node_id_extractor=ka.node_key_extractor,
+        incident_nodes_extractor=ka.nodes_in_edge_extractor,
+        file_path=dest,
+        edge_id_extractor=getattr(ka, "edge_key_extractor", None),
+    )
+
+
+def export_ka_jsonld(ka: Any, dest: str | Path, *, overwrite: bool = False) -> Path:
+    """Export a loaded graph-family KA to JSON-LD."""
+    require_graph_ka(ka)
+    dest = resolve_export_file(dest, overwrite=overwrite)
+    return export_to_jsonld(
         ka.nodes,
         ka.edges,
         node_id_extractor=ka.node_key_extractor,

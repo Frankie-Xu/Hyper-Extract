@@ -29,6 +29,7 @@ from hyperextract.utils.exporters.ka import (
     export_ka_csv,
     export_ka_cypher,
     export_ka_graphml,
+    export_ka_jsonld,
 )
 from hyperextract.utils.exporters.graphml import GRAPHML_NS
 
@@ -515,6 +516,48 @@ class TestCommonHelpers:
             export_ka_cypher(FakeListKA(), tmp_path / "g.cypher")
         assert str(exc.value) == GRAPH_TYPE_ERROR
         assert "Cypher" in GRAPH_TYPE_ERROR
+
+    def test_export_ka_jsonld_matches_encoder(self, tmp_path):
+        fake = FakeGraphKA(
+            [Entity(name="A"), Entity(name="B")],
+            [Relation(source="B", target="A", relation_type="leads_to")],
+        )
+        via_adapter = export_ka_jsonld(fake, tmp_path / "via_ka.jsonld")
+        via_encoder = export_to_jsonld(
+            fake.nodes,
+            fake.edges,
+            node_id_extractor=fake.node_key_extractor,
+            incident_nodes_extractor=fake.nodes_in_edge_extractor,
+            file_path=tmp_path / "via_enc.jsonld",
+            edge_id_extractor=fake.edge_key_extractor,
+        )
+        assert _load_jsonld(via_adapter) == _load_jsonld(via_encoder)
+        edges_out = [
+            item
+            for item in _load_jsonld(via_adapter)["@graph"]
+            if item.get("@type") == "Edge"
+        ]
+        assert edges_out[0]["source"] == "B"
+        assert edges_out[0]["target"] == "A"
+
+        hyper = FakeGraphKA(
+            [Entity(name="A"), Entity(name="B"), Entity(name="C")],
+            [Event(label="meeting", participants=["C", "A", "B"])],
+            hypergraph=True,
+        )
+        hyper_path = export_ka_jsonld(hyper, tmp_path / "hyper.jsonld")
+        hypers = [
+            item
+            for item in _load_jsonld(hyper_path)["@graph"]
+            if item.get("@type") == "Hyperedge"
+        ]
+        assert len(hypers) == 1
+        assert hypers[0]["endpoint"] == ["C", "A", "B"]
+
+    def test_export_ka_jsonld_rejects_non_graph(self, tmp_path):
+        with pytest.raises(GraphTypeError) as exc:
+            export_ka_jsonld(FakeListKA(), tmp_path / "g.jsonld")
+        assert str(exc.value) == GRAPH_TYPE_ERROR
 
 
 class TestCLIExport:
