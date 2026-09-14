@@ -4,6 +4,12 @@
 
 ---
 
+## v0.10.1 — 索引存储脱离 pickle
+
+- **🔒 安全的索引格式** — `AutoModel`/`AutoList` 的索引改为 JSON 存储（`index.json`：向量 + 文档），加载时在内存中重建——**没有 pickle，不执行任何代码**。旧 pickle 索引（<= v0.10.0）仍可加载但会给出警告；`he build-index --force` 即可迁移。*(#116)*
+
+---
+
 ## v0.10.0 — 更多导出格式、Gemini 与质量加固
 
 - **📤 JSON-LD 与 Cypher 导出** — `he export jsonld`（二元边 + GraphML 风格超边）与 `he export cypher`（Neo4j 兼容 MERGE 脚本；N 元边编码为 Hyperedge 节点，不做有损团 expansion）。*(#139, #141)*

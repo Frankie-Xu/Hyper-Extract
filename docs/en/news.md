@@ -4,6 +4,12 @@ Release notes and highlights. For a complete changelog, see the [GitHub releases
 
 ---
 
+## v0.10.1 — Pickle-Free Index Storage
+
+- **🔒 Safe index format** — `AutoModel`/`AutoList` indexes are now stored as JSON (`index.json`: vectors + documents) and rebuilt in memory on load — **no pickle, no code execution**. Legacy pickle indexes (<= v0.10.0) still load with a deserialization warning; `he build-index --force` migrates them. *(#116)*
+
+---
+
 ## v0.10.0 — More Export Formats, Gemini, and Quality Hardening
 
 - **📤 JSON-LD & Cypher exports** — `he export jsonld` (pairwise edges + GraphML-style hyperedges) and `he export cypher` (Neo4j-compatible MERGE script; N-ary edges become Hyperedge nodes, not lossy cliques). *(#139, #141)*

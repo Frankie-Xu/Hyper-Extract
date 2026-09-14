@@ -342,7 +342,7 @@ identifiers:
 
 ## 📰 What's New
 
-**v0.10.0** — 📤 New exports: JSON-LD & Cypher (Neo4j) alongside GraphML/CSV/Obsidian — all four also available via MCP · 📄 `he feed` now accepts directories · 🧠 Native Gemini support (`pip install "hyperextract[google]"`) · 🛡️ Windows config hardening & scoped-search fixes across every KA type.
+**v0.10.1** — 🔒 Pickle-free index storage: `AutoModel`/`AutoList` indexes are JSON now — legacy pickle indexes still load with a warning (`he build-index --force` migrates). *(#116)*
 
 📰 **[Full release notes](https://yifanfeng97.github.io/Hyper-Extract/latest/news/)** · [All releases](https://github.com/yifanfeng97/hyper-extract/releases)
 

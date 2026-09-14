@@ -342,7 +342,7 @@ identifiers:
 
 ## 📰 最新动态
 
-**v0.10.0** — 📤 新增导出：JSON-LD 与 Cypher（Neo4j），连同 GraphML/CSV/Obsidian——四种格式均可经 MCP 调用 · 📄 `he feed` 现在支持目录 · 🧠 原生 Gemini 支持（`pip install "hyperextract[google]"`）· 🛡️ Windows 配置加固与全部知识库类型的范围检索修复。
+**v0.10.1** — 🔒 Pickle-free index storage: `AutoModel`/`AutoList` indexes are JSON now — legacy pickle indexes still load with a warning (`he build-index --force` migrates). *(#116)*
 
 📰 **[完整版本说明](https://yifanfeng97.github.io/Hyper-Extract/latest/zh/news/)** · [全部 Releases](https://github.com/yifanfeng97/hyper-extract/releases)
 

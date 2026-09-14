@@ -53,7 +53,7 @@ result.dump("./my_ka/")
 ## 加载知识库
 
 !!! warning "只加载受信任的目录"
-    加载知识库时，`index/` 下的本地 FAISS 索引需要反序列化。请只对自己生成或完全信任的知识库目录调用 `load()`（以及会加载 KA 的 CLI/MCP 命令）。
+    自 v0.10.1 起，索引以 JSON（`index.json`）存储，加载时不执行任何代码。旧版本（<= v0.10.0）的 KA 仍是 pickle 索引，加载时会反序列化——请只对自己生成或完全信任的知识库目录调用 `load()`（以及会加载 KA 的 CLI/MCP 命令）。用 `he build-index --force` 重建即可迁移旧 KA。
 
 ### 基本加载
 

@@ -116,7 +116,7 @@ The index is stored in the knowledge abstract directory:
     └── docstore.json   # Document store mapping
 ```
 
-Load an existing `index/` only from Knowledge Abstract directories you created or fully trust. Local FAISS indexes require deserialization on load.
+Load an existing `index/` only from Knowledge Abstract directories you created or fully trust. Since v0.10.1 indexes are JSON (safe to load); legacy pickle indexes (<= v0.10.0) are deserialized on load — rebuild with `--force` to migrate.
 
 ---
 

@@ -14,6 +14,7 @@ from langchain_core.language_models.chat_models import BaseChatModel
 from ontomem.merger import BaseMerger, MergeStrategy, create_merger
 from ontosight import view_nodes
 
+from hyperextract.utils.json_index import dump_index_json, load_index_json
 from hyperextract.utils.logging import get_logger
 
 from ._faiss import _warn_untrusted_faiss_load
@@ -302,16 +303,26 @@ class AutoModel(BaseAutoType[T]):
     # ==================== Index Storage ====================
 
     def dump_index(self, folder_path: str | Path) -> None:
-        """Saves FAISS vector index to disk."""
+        """Saves the vector index as JSON (no pickle)."""
         if self._index is None:
             return
-        self._index.save_local(folder_path)
+        dump_index_json(self._index, folder_path)
 
     def load_index(self, folder_path: str | Path) -> None:
-        """Loads FAISS vector index from disk."""
+        """Loads the vector index from disk.
+
+        JSON indexes (written by >=0.10.1) are loaded without any code
+        execution. Legacy pickle-based indexes still load with a
+        deserialization warning — rebuild with `he build-index --force`
+        to migrate them to JSON.
+        """
         folder = Path(folder_path)
         if not folder.is_dir():
             raise ValueError(f"Folder does not exist: {folder_path}")
+        index = load_index_json(folder, self.embedder)
+        if index is not None:
+            self._index = index
+            return
         _warn_untrusted_faiss_load(folder)
         self._index = FAISS.load_local(
             str(folder), self.embedder, allow_dangerous_deserialization=True

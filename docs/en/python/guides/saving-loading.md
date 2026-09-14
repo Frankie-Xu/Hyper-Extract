@@ -54,7 +54,7 @@ result.dump("./my_ka/")
 ## Loading Knowledge Abstracts
 
 !!! warning "Trusted directories only"
-    Local FAISS indexes under `index/` are deserialized when you load a Knowledge Abstract. Only call `load()` (or CLI/MCP commands that load a KA) on directories you generated yourself or fully trust.
+    Since v0.10.1, indexes are stored as JSON (`index.json`) and load without code execution. Legacy KAs (<= v0.10.0) keep pickle-based indexes, which ARE deserialized on load — only call `load()` (or CLI/MCP commands that load a KA) on directories you generated yourself or fully trust. Rebuild with `he build-index --force` to migrate a legacy KA.
 
 ### Basic Load
 
