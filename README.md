@@ -342,7 +342,7 @@ identifiers:
 
 ## 📰 What's New
 
-**v0.9.0** — 📄 Rich document ingestion: `he parse` / `he feed` now take PDF, Word, PowerPoint, Excel, HTML, EPUB and more (`pip install "hyperextract[ingest]"`) · 🧱 New `chunk_rag` method: zero-extraction chunk baseline with full provenance · 🐛 `he tag` and method-KA command fixes.
+**v0.10.0** — 📤 New exports: JSON-LD & Cypher (Neo4j) alongside GraphML/CSV/Obsidian — all four also available via MCP · 📄 `he feed` now accepts directories · 🧠 Native Gemini support (`pip install "hyperextract[google]"`) · 🛡️ Windows config hardening & scoped-search fixes across every KA type.
 
 📰 **[Full release notes](https://yifanfeng97.github.io/Hyper-Extract/latest/news/)** · [All releases](https://github.com/yifanfeng97/hyper-extract/releases)
 
@@ -366,7 +366,7 @@ pip install 'hyperextract[mcp]'
 he-mcp        # stdio MCP server
 ```
 
-Tools: `list_templates`, `info`, `search`, `ask` (RAG), `export_obsidian`. Full guide: [MCP Server docs](https://yifanfeng97.github.io/Hyper-Extract/latest/mcp/).
+Tools: `list_templates`, `info`, `search`, `ask` (RAG), `export_obsidian`, `export_graphml`, `export_csv`, `export_jsonld`, `export_cypher`. Full guide: [MCP Server docs](https://yifanfeng97.github.io/Hyper-Extract/latest/mcp/).
 
 ## 🤝 Contributing & License
 

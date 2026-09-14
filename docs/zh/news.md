@@ -4,6 +4,24 @@
 
 ---
 
+## v0.10.0 — 更多导出格式、Gemini 与质量加固
+
+- **📤 JSON-LD 与 Cypher 导出** — `he export jsonld`（二元边 + GraphML 风格超边）与 `he export cypher`（Neo4j 兼容 MERGE 脚本；N 元边编码为 Hyperedge 节点，不做有损团 expansion）。*(#139, #141)*
+- **🔌 MCP 导出对齐** — `he-mcp` 新增 `export_graphml`、`export_csv`、`export_jsonld`、`export_cypher` 工具；MCP `list_templates` 包含方法模板、`info` 与 CLI 一样展示 chunks/时间戳/来源。*(#106, #131, #133, #144)*
+- **📄 `he feed` 支持目录** — 与 `he parse` 对齐：逐文件来源标注、相同的跳过/警告行为。*(#135)*
+- **🧠 原生 Gemini 支持** — 此前未接线的 `[google]` extra 已接入 `create_llm`：`pip install "hyperextract[google]"`。*(#137)*
+- **🏗️ 内部改进** — `GraphIndexMixin` 抽取 graph/hypergraph 共享的合并/索引/检索面（净删 168 行）；全部注册方法的契约测试；测试矩阵加入 Windows。*(#112, #108, #145)*
+- **🛡️ 加固** — chunk 参数解析期校验（`chunk_overlap < chunk_size`）；`relation_members` 必须含 `source`/`target` 角色；Windows `config.toml` ACL 收紧到当前用户；FAISS 反序列化警告。*(#91, #92, #110, #94)*
+- **🐛 修复** — 超图范围检索透传；`he search` 打印节点/边而非原始元组；MCP `search` 不再因三元组崩溃；GraphML 导出尊重 `--force`。*(#90, #144)*
+
+---
+
+## v0.9.1 — 范围检索补全与校验器加固
+
+- **🐛 修复** — 超图 `search` 透传 scope（此前丢弃 `source_ids`/`tags`）；AutoSet 溯源端到端接通（记录/标签/回滚/持久化）；`Graph_RAG`/`Cog_RAG` scope 转发；无账本类型上范围检索给出明确报错。
+
+---
+
 ## v0.9.0 — 丰富的文档输入与 chunk_rag 基线
 
 - **📄 丰富的文档输入** — `he parse` / `he feed` 现在支持 PDF、Word、PowerPoint、Excel、HTML、CSV/JSON/XML、EPUB 等格式，安装可选依赖即可启用（`pip install "hyperextract[ingest]"`，由 [MarkItDown](https://github.com/microsoft/markitdown) 驱动）。非 UTF-8 文本（GBK 等）自动识别编码；无文字层的扫描版 PDF 会给出明确的 OCR 提示，而不是静默摄入乱码。

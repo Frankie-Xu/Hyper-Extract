@@ -342,7 +342,7 @@ identifiers:
 
 ## 📰 最新动态
 
-**v0.9.0** — 📄 丰富的文档输入：`he parse` / `he feed` 现在支持 PDF、Word、PowerPoint、Excel、HTML、EPUB 等格式（`pip install "hyperextract[ingest]"`）· 🧱 新增 `chunk_rag` 方法：零提取成本的块检索基线，具备完整溯源 · 🐛 修复 `he tag` 与方法型知识库的命令崩溃问题。
+**v0.10.0** — 📤 新增导出：JSON-LD 与 Cypher（Neo4j），连同 GraphML/CSV/Obsidian——四种格式均可经 MCP 调用 · 📄 `he feed` 现在支持目录 · 🧠 原生 Gemini 支持（`pip install "hyperextract[google]"`）· 🛡️ Windows 配置加固与全部知识库类型的范围检索修复。
 
 📰 **[完整版本说明](https://yifanfeng97.github.io/Hyper-Extract/latest/zh/news/)** · [全部 Releases](https://github.com/yifanfeng97/hyper-extract/releases)
 
@@ -366,7 +366,7 @@ pip install 'hyperextract[mcp]'
 he-mcp        # stdio MCP 服务器
 ```
 
-工具：`list_templates`、`info`、`search`、`ask`（RAG）、`export_obsidian`。完整指南：[MCP 服务器文档](https://yifanfeng97.github.io/Hyper-Extract/latest/zh/mcp/)。
+工具：`list_templates`、`info`、`search`、`ask`（RAG）、`export_obsidian`、`export_graphml`、`export_csv`、`export_jsonld`、`export_cypher`。完整指南：[MCP 服务器文档](https://yifanfeng97.github.io/Hyper-Extract/latest/zh/mcp/)。
 
 ## 🤝 参与贡献与协议
 

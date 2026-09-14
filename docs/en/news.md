@@ -4,6 +4,24 @@ Release notes and highlights. For a complete changelog, see the [GitHub releases
 
 ---
 
+## v0.10.0 — More Export Formats, Gemini, and Quality Hardening
+
+- **📤 JSON-LD & Cypher exports** — `he export jsonld` (pairwise edges + GraphML-style hyperedges) and `he export cypher` (Neo4j-compatible MERGE script; N-ary edges become Hyperedge nodes, not lossy cliques). *(#139, #141)*
+- **🔌 MCP export parity** — `export_graphml`, `export_csv`, `export_jsonld`, `export_cypher` tools on `he-mcp`; MCP `list_templates` now includes methods and `info` shows chunks/timestamps/sources like the CLI. *(#106, #131, #133, #144)*
+- **📄 `he feed` accepts directories** — parity with `he parse`: per-file source attribution, same skip/warning behavior. *(#135)*
+- **🧠 Native Gemini support** — the previously unused `[google]` extra is now wired to `create_llm`: `pip install "hyperextract[google]"`. *(#137)*
+- **🏗️ Internal** — `GraphIndexMixin` extracts the shared merge/index/search surface of graph & hypergraph (−168 lines); contract tests for every registered method; test matrix now includes Windows. *(#112, #108, #145)*
+- **🛡️ Hardening** — chunk options validated at parse time (`chunk_overlap < chunk_size`); `relation_members` requires `source`/`target` roles; Windows `config.toml` ACL restricted to the current user; FAISS deserialization warning. *(#91, #92, #110, #94)*
+- **🐛 Fixes** — scoped search forwarded on hypergraph; `he search` prints nodes/edges instead of raw tuples; MCP `search` no longer crashes on 3-tuples; GraphML export respects `--force`. *(#90, #144)*
+
+---
+
+## v0.9.1 — Scoped Search Completeness & Validator Hardening
+
+- **🐛 Fixes** — scoped search forwarded on hypergraph (`AutoHypergraph.search` dropped `source_ids`/`tags`); AutoSet provenance wired end-to-end (recording, tags, rollback, persistence); `Graph_RAG`/`Cog_RAG` scope forwarding; friendly error for scope on non-tracked types.
+
+---
+
 ## v0.9.0 — Rich Document Ingestion & chunk_rag Baseline
 
 - **📄 Rich Document Ingestion** — `he parse` / `he feed` now accept PDF, Word, PowerPoint, Excel, HTML, CSV/JSON/XML, EPUB and more via the optional ingest extra (`pip install "hyperextract[ingest]"`, powered by [MarkItDown](https://github.com/microsoft/markitdown)). Non-UTF-8 text (GBK, etc.) is auto-detected; text-less (scanned) PDFs fail with a clear OCR hint instead of silently ingesting garbage.
