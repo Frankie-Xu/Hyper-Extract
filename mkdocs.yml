@@ -9,11 +9,6 @@ repo_name: yifanfeng97/hyper-extract
 repo_url: https://github.com/yifanfeng97/hyper-extract
 edit_uri: edit/main/docs/
 
-# Agent-only working files; not part of the public docs site.
-exclude_docs: |
-  adr/**
-  agents/**
-
 hooks:
   - docs_hooks.py
 
