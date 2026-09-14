@@ -1081,7 +1081,13 @@ def search(
     )
 
 
-def chat_loop(ka, ka_path: str, top_k: int = 3):
+def chat_loop(
+    ka,
+    ka_path: str,
+    top_k: int = 3,
+    source_ids: list[str] | None = None,
+    tags: list[str] | None = None,
+):
     """Interactive chat loop."""
     console.print(
         "\n[bold green]Entering interactive mode. Type 'exit' or 'quit' to stop.[/bold green]\n"
@@ -1103,7 +1109,12 @@ def chat_loop(ka, ka_path: str, top_k: int = 3):
                 break
             if not query.strip():
                 continue
-            response = ka.chat(query, top_k=top_k)
+            chat_kwargs = {"top_k": top_k}
+            if source_ids:
+                chat_kwargs["source_ids"] = source_ids
+            if tags:
+                chat_kwargs["tags"] = tags
+            response = ka.chat(query, **chat_kwargs)
             console.print()
             console.print(response.content)
             console.print()
@@ -1182,6 +1193,12 @@ def talk(
     interactive: bool = typer.Option(
         False, "--interactive", "-i", help="Interactive mode"
     ),
+    source: list[str] | None = typer.Option(
+        None, "--source", help="Scope: only knowledge from these source documents"
+    ),
+    tag: list[str] | None = typer.Option(
+        None, "--tag", help="Scope: only knowledge from sources carrying these tags"
+    ),
 ):
     """Chat with Knowledge Abstract."""
     logger.info(
@@ -1228,12 +1245,30 @@ def talk(
             console.print(f"[red]Error:[/red] {e}")
             raise typer.Exit(1)
 
+    scope_kwargs: dict[str, list[str]] = {}
+    if source:
+        scope_kwargs["source_ids"] = list(source)
+    if tag:
+        scope_kwargs["tags"] = list(tag)
+    if scope_kwargs:
+        import inspect
+
+        chat_params = inspect.signature(type(ka).chat).parameters
+        for flag, key in (("--source", "source_ids"), ("--tag", "tags")):
+            if key in scope_kwargs and key not in chat_params:
+                console.print(
+                    f"[red]Error:[/red] Scoped chat ({flag}) is not "
+                    f"supported by {type(ka).__name__} knowledge "
+                    "abstracts (no source ledger)."
+                )
+                raise typer.Exit(1)
+
     if interactive:
-        chat_loop(ka, ka_path, top_k=top_k)
+        chat_loop(ka, ka_path, top_k=top_k, **scope_kwargs)
     else:
         with console.status("[bold blue]Thinking..."):
             try:
-                response = ka.chat(query, top_k=top_k)
+                response = ka.chat(query, top_k=top_k, **scope_kwargs)
                 console.print(response.content)
 
                 if response.additional_kwargs.get("retrieved_items"):
