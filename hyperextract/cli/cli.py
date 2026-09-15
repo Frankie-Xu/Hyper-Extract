@@ -1253,13 +1253,25 @@ def talk(
     if scope_kwargs:
         import inspect
 
+        # Inspect search() for ledger support — same rule as `he search`.
+        # Do not inspect chat() alone: BaseAutoType.chat always accepts
+        # source_ids/tags, so AutoList/AutoModel would silently ignore --source.
+        search_params = inspect.signature(type(ka).search).parameters
         chat_params = inspect.signature(type(ka).chat).parameters
         for flag, key in (("--source", "source_ids"), ("--tag", "tags")):
-            if key in scope_kwargs and key not in chat_params:
+            if key not in scope_kwargs:
+                continue
+            if key not in search_params:
                 console.print(
                     f"[red]Error:[/red] Scoped chat ({flag}) is not "
                     f"supported by {type(ka).__name__} knowledge "
                     "abstracts (no source ledger)."
+                )
+                raise typer.Exit(1)
+            if key not in chat_params:
+                console.print(
+                    f"[red]Error:[/red] Scoped chat ({flag}) is not "
+                    f"supported by {type(ka).__name__} knowledge abstracts."
                 )
                 raise typer.Exit(1)
 
